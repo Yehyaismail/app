@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Login } from './pages/Login';
 import { Chat } from './pages/Chat';
+import { AdminPanel } from './pages/AdminPanel';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import './App.css';
 
@@ -28,6 +29,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <Chat />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <AdminPanel />
           </ProtectedRoute>
         }
       />

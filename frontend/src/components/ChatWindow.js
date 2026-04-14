@@ -120,16 +120,25 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage }) => {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const prevMessagesRef = useRef([]);
+  const typingTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (selectedUser) {
       loadMessages();
-      const interval = setInterval(loadMessages, 2000);
-      return () => clearInterval(interval);
+      checkTypingStatus();
+      const msgInterval = setInterval(loadMessages, 2000);
+      const typingInterval = setInterval(checkTypingStatus, 1500);
+      return () => {
+        clearInterval(msgInterval);
+        clearInterval(typingInterval);
+        // Send stop typing when switching users
+        sendTypingStatus(false);
+      };
     }
   }, [selectedUser]);
 
@@ -184,12 +193,49 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const sendTypingStatus = async (isTyping) => {
+    if (!selectedUser) return;
+    try {
+      await axios.post(
+        `${API_URL}/api/typing`,
+        { receiver_id: selectedUser.id, is_typing: isTyping },
+        { withCredentials: true }
+      );
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const checkTypingStatus = async () => {
+    if (!selectedUser) return;
+    try {
+      const { data } = await axios.get(
+        `${API_URL}/api/typing/${selectedUser.id}`,
+        { withCredentials: true }
+      );
+      setIsOtherTyping(data.is_typing);
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const handleInputChange = (e) => {
+    setNewMessage(e.target.value);
+    sendTypingStatus(true);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      sendTypingStatus(false);
+    }, 3000);
+  };
+
   const handleSend = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedUser) return;
 
     setLoading(true);
     try {
+      sendTypingStatus(false);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       await axios.post(
         `${API_URL}/api/messages`,
         { receiver_id: selectedUser.id, text: newMessage, message_type: 'text' },
@@ -289,7 +335,11 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage }) => {
           <div>
             <p className="font-medium text-slate-900">{selectedUser.name}</p>
             <p className="text-xs text-slate-500">
-              {selectedUser.online ? 'متصل' : 'غير متصل'}
+              {isOtherTyping ? (
+                <span className="text-emerald-600 font-medium" data-testid="typing-indicator">يكتب الآن...</span>
+              ) : (
+                selectedUser.online ? 'متصل' : 'غير متصل'
+              )}
             </p>
           </div>
         </div>
@@ -391,7 +441,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage }) => {
           <Input
             type="text"
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={handleInputChange}
             placeholder="اكتب رسالتك..."
             className="flex-1 focus:ring-2 focus:ring-emerald-500"
             disabled={loading || uploading}

@@ -135,6 +135,17 @@ class MessageCreate(BaseModel):
     file_name: Optional[str] = None
     file_type: Optional[str] = None
 
+class TypingUpdate(BaseModel):
+    receiver_id: str
+    is_typing: bool
+
+# ===================== Admin Dependency =====================
+async def get_admin_user(request: Request) -> dict:
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
 # ===================== Auth Routes =====================
 @api_router.post("/auth/register")
 async def register(data: RegisterRequest, response: Response):
@@ -411,6 +422,102 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     result.sort(key=lambda x: x["last_message_time"], reverse=True)
     return result
 
+# ===================== Typing Indicator =====================
+@api_router.post("/typing")
+async def update_typing(data: TypingUpdate, current_user: dict = Depends(get_current_user)):
+    await db.typing_status.update_one(
+        {"user_id": current_user["id"], "receiver_id": data.receiver_id},
+        {"$set": {
+            "user_id": current_user["id"],
+            "receiver_id": data.receiver_id,
+            "is_typing": data.is_typing,
+            "updated_at": datetime.now(timezone.utc)
+        }},
+        upsert=True
+    )
+    return {"ok": True}
+
+@api_router.get("/typing/{other_user_id}")
+async def get_typing_status(other_user_id: str, current_user: dict = Depends(get_current_user)):
+    status = await db.typing_status.find_one(
+        {"user_id": other_user_id, "receiver_id": current_user["id"]},
+        {"_id": 0}
+    )
+    if status:
+        # Auto-expire after 5 seconds
+        if status.get("updated_at") and (datetime.now(timezone.utc) - status["updated_at"]).total_seconds() > 5:
+            return {"is_typing": False}
+        return {"is_typing": status.get("is_typing", False)}
+    return {"is_typing": False}
+
+# ===================== Admin Routes =====================
+@api_router.get("/admin/users")
+async def admin_get_users(current_user: dict = Depends(get_admin_user)):
+    users_cursor = db.users.find(
+        {},
+        {"_id": 1, "name": 1, "email": 1, "online": 1, "last_seen": 1, "created_at": 1, "role": 1}
+    )
+    users = await users_cursor.to_list(500)
+    result = []
+    for u in users:
+        user_id = str(u["_id"])
+        msg_count = await db.messages.count_documents({
+            "$or": [{"sender_id": u["_id"]}, {"receiver_id": u["_id"]}]
+        })
+        result.append({
+            "id": user_id,
+            "name": u["name"],
+            "email": u["email"],
+            "online": u.get("online", False),
+            "last_seen": u.get("last_seen"),
+            "created_at": u.get("created_at"),
+            "role": u.get("role", "user"),
+            "message_count": msg_count
+        })
+    return result
+
+@api_router.delete("/admin/users/{user_id}")
+async def admin_delete_user(user_id: str, current_user: dict = Depends(get_admin_user)):
+    if user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    
+    target_user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if target_user.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Cannot delete admin users")
+    
+    user_oid = ObjectId(user_id)
+    
+    # Delete all messages from/to this user
+    await db.messages.delete_many({
+        "$or": [{"sender_id": user_oid}, {"receiver_id": user_oid}]
+    })
+    
+    # Delete typing status
+    await db.typing_status.delete_many({
+        "$or": [{"user_id": user_id}, {"receiver_id": user_id}]
+    })
+    
+    # Delete user
+    await db.users.delete_one({"_id": user_oid})
+    
+    return {"message": "User deleted successfully", "deleted_user_id": user_id}
+
+@api_router.get("/admin/stats")
+async def admin_get_stats(current_user: dict = Depends(get_admin_user)):
+    total_users = await db.users.count_documents({})
+    online_users = await db.users.count_documents({"online": True})
+    total_messages = await db.messages.count_documents({})
+    total_files = await db.files.count_documents({"is_deleted": False})
+    return {
+        "total_users": total_users,
+        "online_users": online_users,
+        "total_messages": total_messages,
+        "total_files": total_files
+    }
+
 # Include the router
 app.include_router(api_router)
 
@@ -432,6 +539,7 @@ logger = logging.getLogger(__name__)
 async def startup_event():
     await db.users.create_index("email", unique=True)
     await db.messages.create_index([("sender_id", 1), ("receiver_id", 1), ("timestamp", -1)])
+    await db.typing_status.create_index([("user_id", 1), ("receiver_id", 1)])
     
     # Init storage
     try:

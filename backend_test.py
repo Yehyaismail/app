@@ -460,6 +460,216 @@ class ChatAppAPITester:
         
         return success
 
+    def test_typing_indicator_set(self):
+        """Test setting typing status"""
+        if not self.test_user2:
+            print("❌ Skipping typing indicator test - no test user available")
+            return False
+            
+        success, response = self.run_test(
+            "Set Typing Status (True)",
+            "POST",
+            "api/typing",
+            200,
+            data={
+                "receiver_id": self.test_user2['id'],
+                "is_typing": True
+            }
+        )
+        return success
+
+    def test_typing_indicator_get(self):
+        """Test getting typing status"""
+        if not self.test_user1:
+            print("❌ Skipping get typing status test - no test user available")
+            return False
+            
+        success, response = self.run_test(
+            "Get Typing Status",
+            "GET",
+            f"api/typing/{self.test_user1['id']}",
+            200
+        )
+        
+        if success:
+            print(f"   Typing status: {response.get('is_typing', False)}")
+        
+        return success
+
+    def test_typing_indicator_unset(self):
+        """Test unsetting typing status"""
+        if not self.test_user2:
+            print("❌ Skipping typing indicator unset test - no test user available")
+            return False
+            
+        success, response = self.run_test(
+            "Set Typing Status (False)",
+            "POST",
+            "api/typing",
+            200,
+            data={
+                "receiver_id": self.test_user2['id'],
+                "is_typing": False
+            }
+        )
+        return success
+
+    def test_admin_get_users(self):
+        """Test admin get users endpoint"""
+        if not self.admin_user:
+            print("❌ Skipping admin get users test - no admin user available")
+            return False
+            
+        # Login as admin first
+        login_success, _ = self.run_test(
+            "Admin Login for Admin Tests",
+            "POST",
+            "api/auth/login",
+            200,
+            data={"email": "admin@chatapp.com", "password": "admin123"}
+        )
+        
+        if not login_success:
+            return False
+            
+        success, response = self.run_test(
+            "Admin Get Users",
+            "GET",
+            "api/admin/users",
+            200
+        )
+        
+        if success:
+            print(f"   Found {len(response)} users")
+            for user in response:
+                print(f"   User: {user.get('name')} ({user.get('email')}) - Messages: {user.get('message_count', 0)} - Role: {user.get('role', 'user')}")
+        
+        return success
+
+    def test_admin_get_stats(self):
+        """Test admin get stats endpoint"""
+        success, response = self.run_test(
+            "Admin Get Stats",
+            "GET",
+            "api/admin/stats",
+            200
+        )
+        
+        if success:
+            print(f"   Total users: {response.get('total_users', 0)}")
+            print(f"   Online users: {response.get('online_users', 0)}")
+            print(f"   Total messages: {response.get('total_messages', 0)}")
+            print(f"   Total files: {response.get('total_files', 0)}")
+        
+        return success
+
+    def test_admin_delete_user_non_admin(self):
+        """Test admin delete non-admin user"""
+        if not self.test_user1:
+            print("❌ Skipping admin delete user test - no test user available")
+            return False
+            
+        # Re-login as admin first
+        login_success, _ = self.run_test(
+            "Admin Re-Login for Delete Test",
+            "POST",
+            "api/auth/login",
+            200,
+            data={"email": "admin@chatapp.com", "password": "admin123"}
+        )
+        
+        if not login_success:
+            return False
+            
+        success, response = self.run_test(
+            "Admin Delete Non-Admin User",
+            "DELETE",
+            f"api/admin/users/{self.test_user1['id']}",
+            200
+        )
+        
+        if success:
+            print(f"   Deleted user: {response.get('deleted_user_id')}")
+        
+        return success
+
+    def test_admin_delete_admin_user_forbidden(self):
+        """Test admin cannot delete admin user"""
+        # First get admin user ID
+        users_success, users_response = self.run_test(
+            "Get Users for Admin Delete Test",
+            "GET",
+            "api/admin/users",
+            200
+        )
+        
+        if not users_success:
+            return False
+            
+        admin_user_id = None
+        for user in users_response:
+            if user.get('role') == 'admin':
+                admin_user_id = user.get('id')
+                break
+                
+        if not admin_user_id:
+            print("❌ No admin user found to test deletion")
+            return False
+            
+        success, response = self.run_test(
+            "Admin Delete Admin User (Should Fail)",
+            "DELETE",
+            f"api/admin/users/{admin_user_id}",
+            400
+        )
+        
+        return success
+
+    def test_non_admin_access_admin_endpoints(self):
+        """Test non-admin user cannot access admin endpoints"""
+        if not self.test_user2:
+            print("❌ Skipping non-admin access test - no test user available")
+            return False
+            
+        # Login as regular user
+        login_success, _ = self.run_test(
+            "User Login for Non-Admin Test",
+            "POST",
+            "api/auth/login",
+            200,
+            data={
+                "email": self.test_user2['email'],
+                "password": self.test_user2['password']
+            }
+        )
+        
+        if not login_success:
+            return False
+            
+        # Try to access admin endpoints (should fail with 403)
+        success1, _ = self.run_test(
+            "Non-Admin Access Users (Should Fail)",
+            "GET",
+            "api/admin/users",
+            403
+        )
+        
+        success2, _ = self.run_test(
+            "Non-Admin Access Stats (Should Fail)",
+            "GET",
+            "api/admin/stats",
+            403
+        )
+        
+        success3, _ = self.run_test(
+            "Non-Admin Delete User (Should Fail)",
+            "DELETE",
+            f"api/admin/users/{self.test_user2['id']}",
+            403
+        )
+        
+        return success1 and success2 and success3
+
 def main():
     print("🚀 Starting Chat App API Tests")
     print("=" * 50)
@@ -485,6 +695,14 @@ def main():
         ("Get Conversations", tester.test_get_conversations),
         ("Message Status - Delivered", tester.test_message_status_delivered),
         ("Message Status - Read", tester.test_message_status_read),
+        ("Typing Indicator - Set", tester.test_typing_indicator_set),
+        ("Typing Indicator - Get", tester.test_typing_indicator_get),
+        ("Typing Indicator - Unset", tester.test_typing_indicator_unset),
+        ("Admin Get Users", tester.test_admin_get_users),
+        ("Admin Get Stats", tester.test_admin_get_stats),
+        ("Non-Admin Access Admin Endpoints", tester.test_non_admin_access_admin_endpoints),
+        ("Admin Delete Non-Admin User", tester.test_admin_delete_user_non_admin),
+        ("Admin Delete Admin User (Forbidden)", tester.test_admin_delete_admin_user_forbidden),
         ("Logout", tester.test_logout),
         ("Unauthorized Access", tester.test_unauthorized_access),
     ]

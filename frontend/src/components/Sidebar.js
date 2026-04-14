@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Input } from './ui/input';
-import { LogOut, Search, MessageCircle } from 'lucide-react';
+import { LogOut, Search, MessageCircle, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
@@ -74,6 +74,17 @@ export const Sidebar = ({
             <LogOut className="w-5 h-5 text-slate-600" />
           </button>
         </div>
+
+        {currentUser?.role === 'admin' && (
+          <button
+            onClick={() => navigate('/admin')}
+            className="w-full mb-3 flex items-center justify-center gap-2 py-2 px-3 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors duration-200 text-sm font-medium"
+            data-testid="admin-panel-btn"
+          >
+            <Shield className="w-4 h-4" />
+            لوحة التحكم
+          </button>
+        )}
 
         <div className="relative">
           <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
