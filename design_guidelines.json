@@ -1,0 +1,82 @@
+{
+  "theme": "light",
+  "archetype": "1 (Organic & Earthy)",
+  "typography": {
+    "font_families": {
+      "headings": "Manrope",
+      "body": "IBM Plex Sans"
+    },
+    "scales": {
+      "h1": "text-4xl sm:text-5xl tracking-tight font-light",
+      "h2": "text-2xl sm:text-3xl tracking-tight",
+      "h3": "text-xl sm:text-2xl",
+      "h4": "text-lg sm:text-xl",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm",
+      "tiny": "text-xs tracking-wider uppercase"
+    }
+  },
+  "colors": {
+    "background_default": "bg-slate-50",
+    "surface": "bg-white",
+    "primary": "bg-emerald-600",
+    "primary_hover": "hover:bg-emerald-700",
+    "primary_text": "text-slate-900",
+    "secondary_text": "text-slate-500",
+    "border": "border-slate-200",
+    "outgoing_bubble": "bg-emerald-100",
+    "incoming_bubble": "bg-white"
+  },
+  "layout_and_spacing": {
+    "general": "Use pure HTML/Tailwind for main grid layouts. Avoid overusing predefined cards for complex grids.",
+    "login_page": "Full-height flex-center with glassmorphism card over background image.",
+    "chat_app": "100vh layout, h-full. Two-column grid: Sidebar (grid-cols-1 md:grid-cols-4 lg:grid-cols-12, col-span-1 md:col-span-1 lg:col-span-3 or 4) and Main Chat (lg:col-span-8 or 9)."
+  },
+  "components_instructions": {
+    "login": {
+      "description": "Centered login form. Use Shadcn Input and Button. Add data-testid to all interactive elements.",
+      "background_image": "https://images.unsplash.com/photo-1660164963725-2ff555ea1aa1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwbGlnaHQlMjBuYXR1cmUlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3NjE5MDczMnww&ixlib=rb-4.1.0&q=85",
+      "style": "backdrop-blur-xl bg-white/70 border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+    },
+    "sidebar": {
+      "description": "List of recent chats. Uses Shadcn Avatar, simple div layout for items. Scrollable. Active chat highlighted with bg-slate-100.",
+      "header": "Sticky header with current user avatar and actions.",
+      "search": "Sticky search bar beneath header."
+    },
+    "chat_window": {
+      "description": "Main area. Header with contact info. Messages list with flex layout (start/end) and styled bubbles.",
+      "empty_state_image": "https://images.unsplash.com/photo-1755908471117-9adbf5671b1d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwxfHxwZW9wbGUlMjBjaGF0dGluZyUyMHNpbGhvdWV0dGV8ZW58MHx8fHwxNzc2MTkwNzMyfDA&ixlib=rb-4.1.0&q=85",
+      "message_bubble_outgoing": "bg-emerald-100 text-slate-900 rounded-lg rounded-tr-none p-3 shadow-sm",
+      "message_bubble_incoming": "bg-white text-slate-900 rounded-lg rounded-tl-none p-3 shadow-sm border border-slate-100"
+    },
+    "message_input": {
+      "description": "Bottom sticky area. Input field taking most width, send button."
+    }
+  },
+  "motion_and_interactions": {
+    "hover_states": "All list items and buttons must have explicit hover states (e.g. hover:bg-slate-100).",
+    "focus_states": "Inputs should have focus:ring-2 focus:ring-emerald-500.",
+    "transitions": "transition-colors duration-200 ease-in-out."
+  },
+  "icons": {
+    "library": "lucide-react",
+    "usage": "Use icons for Send, Attach, Search, Menu, Back."
+  },
+  "media_urls": {
+    "login_background": "https://images.unsplash.com/photo-1660164963725-2ff555ea1aa1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwbGlnaHQlMjBuYXR1cmUlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3NjE5MDczMnww&ixlib=rb-4.1.0&q=85",
+    "empty_chat_illustration": "https://images.unsplash.com/photo-1755908471117-9adbf5671b1d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwxfHxwZW9wbGUlMjBjaGF0dGluZyUyMHNpbGhvdWV0dGV8ZW58MHx8fHwxNzc2MTkwNzMyfDA&ixlib=rb-4.1.0&q=85"
+  },
+  "testing_attributes": {
+    "login_form": "data-testid='login-form'",
+    "email_input": "data-testid='login-email-input'",
+    "password_input": "data-testid='login-password-input'",
+    "submit_btn": "data-testid='login-submit-btn'",
+    "chat_list": "data-testid='sidebar-chat-list'",
+    "chat_item": "data-testid='chat-list-item'",
+    "message_input": "data-testid='chat-message-input'",
+    "send_btn": "data-testid='chat-send-btn'",
+    "message_list": "data-testid='chat-message-list'",
+    "message_bubble": "data-testid='chat-message-bubble'"
+  },
+  "general_instructions": "Ensure you are using JavaScript (.js/.jsx) as this is a JS project. Use pure HTML/Tailwind for layouts and heavily customized Shadcn components for forms, inputs, and avatars. Ensure the Chat layout takes exactly 100vh and uses grid/flex to keep the message list scrollable while headers and input remain sticky."
+}
