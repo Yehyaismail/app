@@ -466,8 +466,12 @@ async def get_typing_status(other_user_id: str, current_user: dict = Depends(get
     )
     if status:
         # Auto-expire after 5 seconds
-        if status.get("updated_at") and (datetime.now(timezone.utc) - status["updated_at"]).total_seconds() > 5:
-            return {"is_typing": False}
+        if status.get("updated_at"):
+            updated = status["updated_at"]
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            if (datetime.now(timezone.utc) - updated).total_seconds() > 5:
+                return {"is_typing": False}
         return {"is_typing": status.get("is_typing", False)}
     return {"is_typing": False}
 

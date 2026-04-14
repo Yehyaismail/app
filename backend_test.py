@@ -15,8 +15,10 @@ class ChatAppAPITester:
         self.test_user2 = None
         self.uploaded_image = None
         self.uploaded_document = None
+        self.uploaded_voice = None
         self.image_message = None
         self.file_message = None
+        self.voice_message = None
 
     def run_test(self, name, method, endpoint, expected_status, data=None, files=None, cookies=None):
         """Run a single API test"""
@@ -393,6 +395,58 @@ class ChatAppAPITester:
         
         return success
 
+    def test_upload_voice_file(self):
+        """Test uploading a voice file"""
+        # Create a mock voice file (webm format)
+        voice_content = b'\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01\x42\xf7\x81\x01\x42\xf2\x81\x04\x42\xf3\x81\x08\x42\x82\x84webm\x42\x87\x81\x02\x42\x85\x81\x02'  # Mock WebM header
+        voice_file = io.BytesIO(voice_content)
+        
+        success, response = self.run_test(
+            "Upload Voice File",
+            "POST",
+            "api/upload",
+            200,
+            files={"file": ("test_voice.webm", voice_file, "audio/webm")}
+        )
+        
+        if success:
+            self.uploaded_voice = response
+            print(f"   Uploaded voice: {response.get('original_filename')}")
+            print(f"   Category: {response.get('category')}")
+            print(f"   Storage path: {response.get('storage_path')}")
+        
+        return success
+
+    def test_send_voice_message(self):
+        """Test sending a voice message"""
+        if not self.test_user2 or not hasattr(self, 'uploaded_voice'):
+            print("❌ Skipping voice message test - missing requirements")
+            return False
+            
+        success, response = self.run_test(
+            "Send Voice Message",
+            "POST",
+            "api/messages",
+            200,
+            data={
+                "receiver_id": self.test_user2['id'],
+                "text": "رسالة صوتية",
+                "message_type": "voice",
+                "file_url": self.uploaded_voice.get('storage_path'),
+                "file_name": self.uploaded_voice.get('original_filename'),
+                "file_type": self.uploaded_voice.get('content_type'),
+                "voice_duration": 5.2
+            }
+        )
+        
+        if success:
+            self.voice_message = response
+            print(f"   Voice message status: {response.get('status')}")
+            print(f"   Message type: {response.get('message_type')}")
+            print(f"   Voice duration: {response.get('voice_duration', 'Not set')}")
+        
+        return success
+
     def test_message_status_delivered(self):
         """Test message status changes to delivered when receiver loads conversations"""
         if not self.test_user2:
@@ -733,10 +787,12 @@ def main():
         ("Get Users List", tester.test_get_users_list),
         ("Upload Image File", tester.test_file_upload_image),
         ("Upload Document File", tester.test_file_upload_document),
+        ("Upload Voice File", tester.test_upload_voice_file),
         ("Download File", tester.test_file_download),
         ("Send Message", tester.test_send_message),
         ("Send Message with Image", tester.test_send_message_with_image),
         ("Send Message with File", tester.test_send_message_with_file),
+        ("Send Voice Message", tester.test_send_voice_message),
         ("Get Messages", tester.test_get_messages),
         ("Get Conversations", tester.test_get_conversations),
         ("Message Status - Delivered", tester.test_message_status_delivered),

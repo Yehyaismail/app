@@ -124,8 +124,8 @@ export const Chat = () => {
   };
 
   return (
-    <div className="h-screen bg-slate-50 grid grid-cols-12" data-testid="chat-page">
-      <div className="col-span-12 md:col-span-4 lg:col-span-3 border-r border-slate-200 bg-white">
+    <div className="h-screen bg-slate-50 dark:bg-slate-900 grid grid-cols-12" data-testid="chat-page">
+      <div className="col-span-12 md:col-span-4 lg:col-span-3 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
         <Sidebar
           conversations={conversations}
           allUsers={allUsers}
