@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square } from 'lucide-react';
+import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { VoicePlayer } from './VoicePlayer';
@@ -83,7 +83,7 @@ const FilePreview = ({ msg }) => {
   return null;
 };
 
-export const ChatWindow = ({ selectedUser, currentUser, onNewMessage }) => {
+export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -280,6 +280,20 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage }) => {
       {/* Header */}
       <div className="p-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
         <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors duration-200 md:hidden"
+            data-testid="chat-back-btn"
+          >
+            <ArrowRight className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+          </button>
+          <button
+            onClick={onBack}
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors duration-200 hidden md:flex"
+            data-testid="chat-back-btn-desktop"
+          >
+            <ArrowRight className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+          </button>
           <div className="relative">
             <Avatar className="w-10 h-10 bg-emerald-600"><AvatarFallback className="text-white font-medium">{getInitials(selectedUser.name)}</AvatarFallback></Avatar>
             {selectedUser.online && <div className="absolute bottom-0 left-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full"></div>}

@@ -119,13 +119,17 @@ export const Chat = () => {
     setSelectedUser(userFromConv ? userFromConv.other_user : userFromAll);
   };
 
+  const handleBack = () => {
+    setSelectedUser(null);
+  };
+
   const handleNewMessage = () => {
     loadData();
   };
 
   return (
     <div className="h-screen bg-slate-50 dark:bg-slate-900 grid grid-cols-12" data-testid="chat-page">
-      <div className="col-span-12 md:col-span-4 lg:col-span-3 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+      <div className={`col-span-12 md:col-span-4 lg:col-span-3 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 ${selectedUser ? 'hidden md:block' : ''}`}>
         <Sidebar
           conversations={conversations}
           allUsers={allUsers}
@@ -134,11 +138,12 @@ export const Chat = () => {
           currentUser={user}
         />
       </div>
-      <div className="col-span-12 md:col-span-8 lg:col-span-9">
+      <div className={`col-span-12 md:col-span-8 lg:col-span-9 ${!selectedUser ? 'hidden md:block' : ''}`}>
         <ChatWindow
           selectedUser={selectedUser}
           currentUser={user}
           onNewMessage={handleNewMessage}
+          onBack={handleBack}
         />
       </div>
     </div>
