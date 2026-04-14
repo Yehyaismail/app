@@ -134,6 +134,10 @@ class MessageCreate(BaseModel):
     file_url: Optional[str] = None
     file_name: Optional[str] = None
     file_type: Optional[str] = None
+    reply_to: Optional[str] = None
+
+class MessageEdit(BaseModel):
+    text: str
 
 class TypingUpdate(BaseModel):
     receiver_id: str
@@ -309,8 +313,11 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
         "file_url": data.file_url,
         "file_name": data.file_name,
         "file_type": data.file_type,
+        "reply_to": data.reply_to,
         "timestamp": datetime.now(timezone.utc),
-        "status": "sent"
+        "status": "sent",
+        "edited": False,
+        "deleted": False
     }
     result = await db.messages.insert_one(message_doc)
     
@@ -323,8 +330,11 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
         "file_url": data.file_url,
         "file_name": data.file_name,
         "file_type": data.file_type,
+        "reply_to": data.reply_to,
         "timestamp": message_doc["timestamp"],
-        "status": "sent"
+        "status": "sent",
+        "edited": False,
+        "deleted": False
     }
 
 @api_router.get("/messages/{other_user_id}")
@@ -349,19 +359,66 @@ async def get_messages(other_user_id: str, current_user: dict = Depends(get_curr
     
     result = []
     for msg in messages:
-        result.append({
-            "id": str(msg["_id"]),
-            "sender_id": str(msg["sender_id"]),
-            "receiver_id": str(msg["receiver_id"]),
-            "text": msg.get("text", ""),
-            "message_type": msg.get("message_type", "text"),
-            "file_url": msg.get("file_url"),
-            "file_name": msg.get("file_name"),
-            "file_type": msg.get("file_type"),
-            "timestamp": msg["timestamp"],
-            "status": msg.get("status", "sent")
-        })
+        if msg.get("deleted"):
+            result.append({
+                "id": str(msg["_id"]),
+                "sender_id": str(msg["sender_id"]),
+                "receiver_id": str(msg["receiver_id"]),
+                "text": "تم حذف هذه الرسالة",
+                "message_type": "text",
+                "file_url": None, "file_name": None, "file_type": None,
+                "reply_to": msg.get("reply_to"),
+                "timestamp": msg["timestamp"],
+                "status": msg.get("status", "sent"),
+                "edited": False, "deleted": True
+            })
+        else:
+            result.append({
+                "id": str(msg["_id"]),
+                "sender_id": str(msg["sender_id"]),
+                "receiver_id": str(msg["receiver_id"]),
+                "text": msg.get("text", ""),
+                "message_type": msg.get("message_type", "text"),
+                "file_url": msg.get("file_url"),
+                "file_name": msg.get("file_name"),
+                "file_type": msg.get("file_type"),
+                "reply_to": msg.get("reply_to"),
+                "timestamp": msg["timestamp"],
+                "status": msg.get("status", "sent"),
+                "edited": msg.get("edited", False),
+                "deleted": False
+            })
     return result
+
+@api_router.put("/messages/{message_id}")
+async def edit_message(message_id: str, data: MessageEdit, current_user: dict = Depends(get_current_user)):
+    msg = await db.messages.find_one({"_id": ObjectId(message_id)})
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if str(msg["sender_id"]) != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Can only edit your own messages")
+    if msg.get("deleted"):
+        raise HTTPException(status_code=400, detail="Cannot edit deleted message")
+    
+    await db.messages.update_one(
+        {"_id": ObjectId(message_id)},
+        {"$set": {"text": data.text, "edited": True}}
+    )
+    return {"message": "Message edited", "id": message_id, "text": data.text, "edited": True}
+
+@api_router.delete("/messages/{message_id}")
+async def delete_message(message_id: str, current_user: dict = Depends(get_current_user)):
+    msg = await db.messages.find_one({"_id": ObjectId(message_id)})
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if str(msg["sender_id"]) != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Can only delete your own messages")
+    
+    await db.messages.update_one(
+        {"_id": ObjectId(message_id)},
+        {"$set": {"deleted": True, "text": "", "file_url": None, "file_name": None, "file_type": None, "message_type": "text"}}
+    )
+    return {"message": "Message deleted", "id": message_id}
 
 # ===================== Conversation Routes =====================
 @api_router.get("/conversations")

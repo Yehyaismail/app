@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square, ArrowRight } from 'lucide-react';
+import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square, ArrowRight, Reply, Pencil, Trash2, X, CornerDownLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { VoicePlayer } from './VoicePlayer';
@@ -29,49 +29,38 @@ const FilePreview = ({ msg }) => {
   const loadImage = async () => {
     try {
       setLoadingFile(true);
-      const response = await axios.get(`${API_URL}/api/files/${msg.file_url}`, { withCredentials: true, responseType: 'blob' });
-      setBlobUrl(URL.createObjectURL(response.data));
-    } catch (err) { console.error('Error loading image:', err); }
-    finally { setLoadingFile(false); }
+      const res = await axios.get(`${API_URL}/api/files/${msg.file_url}`, { withCredentials: true, responseType: 'blob' });
+      setBlobUrl(URL.createObjectURL(res.data));
+    } catch (e) {} finally { setLoadingFile(false); }
   };
 
   const handleDownload = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/files/${msg.file_url}`, { withCredentials: true, responseType: 'blob' });
-      const url = URL.createObjectURL(response.data);
-      const a = document.createElement('a');
-      a.href = url; a.download = msg.file_name || 'download';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) { console.error('Error downloading file:', err); }
+      const res = await axios.get(`${API_URL}/api/files/${msg.file_url}`, { withCredentials: true, responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a'); a.href = url; a.download = msg.file_name || 'download';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    } catch (e) {}
   };
 
   if (msg.message_type === 'image') {
     return (
       <div className="mb-2">
         {loadingFile ? (
-          <div className="w-48 h-48 bg-slate-200 dark:bg-slate-700 animate-pulse rounded-lg flex items-center justify-center">
-            <Image className="w-8 h-8 text-slate-400" />
-          </div>
+          <div className="w-48 h-48 bg-slate-200 dark:bg-slate-700 animate-pulse rounded-lg flex items-center justify-center"><Image className="w-8 h-8 text-slate-400" /></div>
         ) : blobUrl ? (
-          <img src={blobUrl} alt={msg.file_name || 'Image'} className="max-w-[250px] max-h-[250px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={() => window.open(blobUrl, '_blank')} data-testid="chat-image-preview" />
+          <img src={blobUrl} alt="" className="max-w-[250px] max-h-[250px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={() => window.open(blobUrl, '_blank')} data-testid="chat-image-preview" />
         ) : (
           <div className="w-48 h-48 bg-slate-200 dark:bg-slate-700 rounded-lg flex items-center justify-center"><Image className="w-8 h-8 text-slate-400" /></div>
         )}
       </div>
     );
   }
-
-  if (msg.message_type === 'voice') {
-    return <div className="mb-1"><VoicePlayer fileUrl={msg.file_url} duration={msg.voice_duration} /></div>;
-  }
-
+  if (msg.message_type === 'voice') return <div className="mb-1"><VoicePlayer fileUrl={msg.file_url} duration={msg.voice_duration} /></div>;
   if (msg.message_type === 'file') {
     return (
       <div className="mb-2 flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" onClick={handleDownload} data-testid="chat-file-preview">
-        <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg flex items-center justify-center">
-          <FileText className="w-5 h-5 text-emerald-600" />
-        </div>
+        <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg flex items-center justify-center"><FileText className="w-5 h-5 text-emerald-600" /></div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{msg.file_name || 'ملف'}</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">{msg.file_type || ''}</p>
@@ -92,6 +81,9 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [replyTo, setReplyTo] = useState(null);
+  const [editingMsg, setEditingMsg] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -100,61 +92,53 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     if (selectedUser) {
       loadMessages();
       checkTypingStatus();
-      const msgInterval = setInterval(loadMessages, 2000);
-      const typingInterval = setInterval(checkTypingStatus, 1500);
-      return () => { clearInterval(msgInterval); clearInterval(typingInterval); sendTypingStatus(false); };
+      const i1 = setInterval(loadMessages, 2000);
+      const i2 = setInterval(checkTypingStatus, 1500);
+      return () => { clearInterval(i1); clearInterval(i2); sendTypingStatus(false); };
     }
   }, [selectedUser]);
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
+  // Close context menu on click outside
+  useEffect(() => {
+    const handler = () => setContextMenu(null);
+    window.addEventListener('click', handler);
+    return () => window.removeEventListener('click', handler);
+  }, []);
+
   const loadMessages = async () => {
     if (!selectedUser) return;
     try {
       const { data } = await axios.get(`${API_URL}/api/messages/${selectedUser.id}`, { withCredentials: true });
-      const prevMsgs = prevMessagesRef.current;
-      if (prevMsgs.length > 0 && data.length > prevMsgs.length) {
-        data.slice(prevMsgs.length).forEach((msg) => {
-          if (msg.sender_id !== currentUser?.id) playNotificationSound();
-        });
+      const prev = prevMessagesRef.current;
+      if (prev.length > 0 && data.length > prev.length) {
+        data.slice(prev.length).forEach((m) => { if (m.sender_id !== currentUser?.id) playNotificationSound(); });
       }
       prevMessagesRef.current = data;
       setMessages(data);
-    } catch (error) { console.error('Error loading messages:', error); }
+    } catch (e) {}
   };
 
   const playNotificationSound = () => {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.frequency.value = 800; osc.type = 'sine';
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.3);
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination); o.frequency.value = 800; o.type = 'sine';
+      g.gain.setValueAtTime(0.3, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      o.start(ctx.currentTime); o.stop(ctx.currentTime + 0.3);
     } catch (e) {}
   };
 
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); };
-
-  const sendTypingStatus = async (isTyping) => {
-    if (!selectedUser) return;
-    try { await axios.post(`${API_URL}/api/typing`, { receiver_id: selectedUser.id, is_typing: isTyping }, { withCredentials: true }); } catch (e) {}
-  };
-
-  const checkTypingStatus = async () => {
-    if (!selectedUser) return;
-    try {
-      const { data } = await axios.get(`${API_URL}/api/typing/${selectedUser.id}`, { withCredentials: true });
-      setIsOtherTyping(data.is_typing);
-    } catch (e) {}
-  };
+  const sendTypingStatus = async (t) => { if (!selectedUser) return; try { await axios.post(`${API_URL}/api/typing`, { receiver_id: selectedUser.id, is_typing: t }, { withCredentials: true }); } catch (e) {} };
+  const checkTypingStatus = async () => { if (!selectedUser) return; try { const { data } = await axios.get(`${API_URL}/api/typing/${selectedUser.id}`, { withCredentials: true }); setIsOtherTyping(data.is_typing); } catch (e) {} };
 
   const handleInputChange = (e) => {
     setNewMessage(e.target.value);
@@ -170,11 +154,20 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     try {
       sendTypingStatus(false);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      await axios.post(`${API_URL}/api/messages`, { receiver_id: selectedUser.id, text: newMessage, message_type: 'text' }, { withCredentials: true });
+
+      if (editingMsg) {
+        await axios.put(`${API_URL}/api/messages/${editingMsg.id}`, { text: newMessage }, { withCredentials: true });
+        setEditingMsg(null);
+      } else {
+        await axios.post(`${API_URL}/api/messages`, {
+          receiver_id: selectedUser.id, text: newMessage, message_type: 'text',
+          reply_to: replyTo?.id || null
+        }, { withCredentials: true });
+        setReplyTo(null);
+      }
       setNewMessage('');
-      await loadMessages();
-      onNewMessage();
-    } catch (error) { console.error('Error sending message:', error); }
+      await loadMessages(); onNewMessage();
+    } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
@@ -183,63 +176,89 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     if (!file || !selectedUser) return;
     setUploading(true); setShowAttachMenu(false);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const uploadRes = await axios.post(`${API_URL}/api/upload`, formData, { withCredentials: true, headers: { 'Content-Type': 'multipart/form-data' } });
-      const msgType = uploadRes.data.category === 'image' ? 'image' : 'file';
+      const fd = new FormData(); fd.append('file', file);
+      const up = await axios.post(`${API_URL}/api/upload`, fd, { withCredentials: true, headers: { 'Content-Type': 'multipart/form-data' } });
+      const mt = up.data.category === 'image' ? 'image' : 'file';
       await axios.post(`${API_URL}/api/messages`, {
-        receiver_id: selectedUser.id, text: msgType === 'image' ? 'صورة' : file.name, message_type: msgType,
-        file_url: uploadRes.data.storage_path, file_name: uploadRes.data.original_filename, file_type: uploadRes.data.content_type
+        receiver_id: selectedUser.id, text: mt === 'image' ? 'صورة' : file.name, message_type: mt,
+        file_url: up.data.storage_path, file_name: up.data.original_filename, file_type: up.data.content_type,
+        reply_to: replyTo?.id || null
       }, { withCredentials: true });
+      setReplyTo(null);
       await loadMessages(); onNewMessage();
-    } catch (error) { console.error('Error uploading file:', error); }
+    } catch (e) {}
     finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; if (imageInputRef.current) imageInputRef.current.value = ''; }
   };
 
-  // ===== Voice Recording =====
+  const handleDeleteMessage = async (msgId) => {
+    try {
+      await axios.delete(`${API_URL}/api/messages/${msgId}`, { withCredentials: true });
+      await loadMessages(); onNewMessage();
+    } catch (e) { console.error(e); }
+    setContextMenu(null);
+  };
+
+  const handleEditMessage = (msg) => {
+    setEditingMsg(msg);
+    setNewMessage(msg.text);
+    setReplyTo(null);
+    setContextMenu(null);
+    inputRef.current?.focus();
+  };
+
+  const handleReplyMessage = (msg) => {
+    setReplyTo(msg);
+    setEditingMsg(null);
+    setContextMenu(null);
+    inputRef.current?.focus();
+  };
+
+  const cancelAction = () => {
+    setReplyTo(null);
+    setEditingMsg(null);
+    setNewMessage('');
+  };
+
+  const openContextMenu = (e, msg) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, msg });
+  };
+
+  // Voice recording
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4' });
+      const mr = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4' });
       audioChunksRef.current = [];
-      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-      mediaRecorder.onstop = () => { stream.getTracks().forEach((t) => t.stop()); };
-      mediaRecorder.start();
-      mediaRecorderRef.current = mediaRecorder;
-      setIsRecording(true);
-      setRecordingDuration(0);
+      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mr.onstop = () => { stream.getTracks().forEach((t) => t.stop()); };
+      mr.start(); mediaRecorderRef.current = mr;
+      setIsRecording(true); setRecordingDuration(0);
       recordingTimerRef.current = setInterval(() => setRecordingDuration((d) => d + 1), 1000);
-    } catch (err) {
-      console.error('Microphone access denied:', err);
-    }
+    } catch (e) {}
   };
 
   const stopRecordingAndSend = async () => {
     if (!mediaRecorderRef.current || !selectedUser) return;
-    const duration = recordingDuration;
-    clearInterval(recordingTimerRef.current);
-    setIsRecording(false);
-    setRecordingDuration(0);
-
+    clearInterval(recordingTimerRef.current); setIsRecording(false); setRecordingDuration(0);
     return new Promise((resolve) => {
       mediaRecorderRef.current.onstop = async () => {
         mediaRecorderRef.current.stream?.getTracks().forEach((t) => t.stop());
         const blob = new Blob(audioChunksRef.current, { type: audioChunksRef.current[0]?.type || 'audio/webm' });
-        if (blob.size < 500) { resolve(); return; } // too short, ignore
+        if (blob.size < 500) { resolve(); return; }
         setUploading(true);
         try {
           const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
           const file = new File([blob], `voice_${Date.now()}.${ext}`, { type: blob.type });
-          const formData = new FormData();
-          formData.append('file', file);
-          const uploadRes = await axios.post(`${API_URL}/api/upload`, formData, { withCredentials: true, headers: { 'Content-Type': 'multipart/form-data' } });
+          const fd = new FormData(); fd.append('file', file);
+          const up = await axios.post(`${API_URL}/api/upload`, fd, { withCredentials: true, headers: { 'Content-Type': 'multipart/form-data' } });
           await axios.post(`${API_URL}/api/messages`, {
             receiver_id: selectedUser.id, text: 'رسالة صوتية', message_type: 'voice',
-            file_url: uploadRes.data.storage_path, file_name: uploadRes.data.original_filename, file_type: uploadRes.data.content_type
+            file_url: up.data.storage_path, file_name: up.data.original_filename, file_type: up.data.content_type
           }, { withCredentials: true });
           await loadMessages(); onNewMessage();
-        } catch (err) { console.error('Error uploading voice:', err); }
-        finally { setUploading(false); }
+        } catch (e) {} finally { setUploading(false); }
         resolve();
       };
       mediaRecorderRef.current.stop();
@@ -247,29 +266,20 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   };
 
   const cancelRecording = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stream?.getTracks().forEach((t) => t.stop());
-      mediaRecorderRef.current.stop();
-    }
-    clearInterval(recordingTimerRef.current);
-    setIsRecording(false);
-    setRecordingDuration(0);
-    audioChunksRef.current = [];
+    if (mediaRecorderRef.current) { mediaRecorderRef.current.stream?.getTracks().forEach((t) => t.stop()); mediaRecorderRef.current.stop(); }
+    clearInterval(recordingTimerRef.current); setIsRecording(false); setRecordingDuration(0); audioChunksRef.current = [];
   };
 
-  const formatRecordingTime = (secs) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  };
-
-  const getInitials = (name) => name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+  const formatRec = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+  const getInitials = (n) => n.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
   const formatTime = (ts) => { try { return format(new Date(ts), 'p', { locale: ar }); } catch { return ''; } };
+
+  const getReplyMessage = (replyId) => messages.find((m) => m.id === replyId);
 
   if (!selectedUser) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900">
-        <img src="https://images.unsplash.com/photo-1755908471117-9adbf5671b1d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwxfHxwZW9wbGUlMjBjaGF0dGluZyUyMHNpbGhvdWV0dGV8ZW58MHx8fHwxNzc2MTkwNzMyfDA&ixlib=rb-4.1.0&q=85" alt="Empty" className="w-64 h-64 object-cover rounded-2xl opacity-40 dark:opacity-20 mb-6" />
+        <img src="https://images.unsplash.com/photo-1755908471117-9adbf5671b1d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwxfHxwZW9wbGUlMjBjaGF0dGluZyUyMHNpbGhvdWV0dGV8ZW58MHx8fHwxNzc2MTkwNzMyfDA&ixlib=rb-4.1.0&q=85" alt="" className="w-64 h-64 object-cover rounded-2xl opacity-40 dark:opacity-20 mb-6" />
         <p className="text-2xl text-slate-400 dark:text-slate-500 font-light">اختر محادثة للبدء</p>
       </div>
     );
@@ -280,18 +290,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
       {/* Header */}
       <div className="p-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors duration-200 md:hidden"
-            data-testid="chat-back-btn"
-          >
-            <ArrowRight className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-          </button>
-          <button
-            onClick={onBack}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors duration-200 hidden md:flex"
-            data-testid="chat-back-btn-desktop"
-          >
+          <button onClick={onBack} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors" data-testid="chat-back-btn">
             <ArrowRight className="w-5 h-5 text-slate-600 dark:text-slate-400" />
           </button>
           <div className="relative">
@@ -308,18 +307,66 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4" data-testid="chat-message-list">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3" data-testid="chat-message-list">
         {messages.map((msg) => {
           const isOwn = msg.sender_id === currentUser?.id;
+          const repliedMsg = msg.reply_to ? getReplyMessage(msg.reply_to) : null;
           return (
-            <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`} data-testid="chat-message-bubble">
-              <div className={`max-w-[70%] ${isOwn ? 'bg-emerald-100 dark:bg-emerald-900/40 text-slate-900 dark:text-slate-100 rounded-lg rounded-tr-none' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg rounded-tl-none border border-slate-100 dark:border-slate-700'} p-3 shadow-sm`}>
-                <FilePreview msg={msg} />
-                {msg.message_type === 'text' && <p className="text-base leading-relaxed">{msg.text}</p>}
+            <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group`} data-testid="chat-message-bubble">
+              <div
+                className={`max-w-[70%] relative ${
+                  isOwn
+                    ? 'bg-emerald-100 dark:bg-emerald-900/40 text-slate-900 dark:text-slate-100 rounded-lg rounded-tr-none'
+                    : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg rounded-tl-none border border-slate-100 dark:border-slate-700'
+                } p-3 shadow-sm`}
+                onContextMenu={(e) => !msg.deleted && openContextMenu(e, msg)}
+              >
+                {/* Reply preview */}
+                {repliedMsg && (
+                  <div className="mb-2 p-2 rounded-lg bg-slate-200/60 dark:bg-slate-700/60 border-r-2 border-emerald-500" data-testid="reply-preview">
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mb-0.5">
+                      {repliedMsg.sender_id === currentUser?.id ? 'أنت' : selectedUser.name}
+                    </p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 truncate">
+                      {repliedMsg.deleted ? 'تم حذف هذه الرسالة' : (repliedMsg.message_type === 'voice' ? 'رسالة صوتية' : repliedMsg.message_type === 'image' ? 'صورة' : repliedMsg.text)}
+                    </p>
+                  </div>
+                )}
+
+                {msg.deleted ? (
+                  <p className="text-sm italic text-slate-400 dark:text-slate-500">تم حذف هذه الرسالة</p>
+                ) : (
+                  <>
+                    <FilePreview msg={msg} />
+                    {msg.message_type === 'text' && <p className="text-base leading-relaxed">{msg.text}</p>}
+                  </>
+                )}
                 <div className="flex items-center justify-between gap-2 mt-1">
-                  <span className="text-xs text-slate-500 dark:text-slate-400">{formatTime(msg.timestamp)}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {formatTime(msg.timestamp)}
+                    {msg.edited && !msg.deleted && <span className="mr-1 text-slate-400 dark:text-slate-500">(معدّل)</span>}
+                  </span>
                   <ReadReceipt status={msg.status} isOwn={isOwn} />
                 </div>
+
+                {/* Hover action buttons */}
+                {!msg.deleted && (
+                  <div className={`absolute top-1 ${isOwn ? 'left-1' : 'right-1'} opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5`}>
+                    <button onClick={() => handleReplyMessage(msg)} className="p-1.5 bg-white dark:bg-slate-700 rounded-md shadow-sm hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors" data-testid="reply-msg-btn">
+                      <Reply className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                    </button>
+                    {isOwn && msg.message_type === 'text' && (
+                      <button onClick={() => handleEditMessage(msg)} className="p-1.5 bg-white dark:bg-slate-700 rounded-md shadow-sm hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors" data-testid="edit-msg-btn">
+                        <Pencil className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                      </button>
+                    )}
+                    {isOwn && (
+                      <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 bg-white dark:bg-slate-700 rounded-md shadow-sm hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" data-testid="delete-msg-btn">
+                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -327,10 +374,50 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1 z-50 min-w-[140px]"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+          data-testid="message-context-menu"
+        >
+          <button onClick={() => handleReplyMessage(contextMenu.msg)} className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm text-slate-700 dark:text-slate-200 text-right" data-testid="ctx-reply-btn">
+            <Reply className="w-4 h-4" /><span>رد</span>
+          </button>
+          {contextMenu.msg.sender_id === currentUser?.id && contextMenu.msg.message_type === 'text' && (
+            <button onClick={() => handleEditMessage(contextMenu.msg)} className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm text-slate-700 dark:text-slate-200 text-right" data-testid="ctx-edit-btn">
+              <Pencil className="w-4 h-4" /><span>تعديل</span>
+            </button>
+          )}
+          {contextMenu.msg.sender_id === currentUser?.id && (
+            <button onClick={() => handleDeleteMessage(contextMenu.msg.id)} className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-sm text-red-600 text-right" data-testid="ctx-delete-btn">
+              <Trash2 className="w-4 h-4" /><span>حذف</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {uploading && (
         <div className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-sm flex items-center gap-2">
-          <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-          جاري الرفع...
+          <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>جاري الرفع...
+        </div>
+      )}
+
+      {/* Reply/Edit Bar */}
+      {(replyTo || editingMsg) && (
+        <div className="px-4 py-3 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center gap-3" data-testid="reply-edit-bar">
+          <div className="flex-1 border-r-2 border-emerald-500 pr-3">
+            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400 mb-0.5">
+              {editingMsg ? 'تعديل الرسالة' : `الرد على ${replyTo.sender_id === currentUser?.id ? 'نفسك' : selectedUser.name}`}
+            </p>
+            <p className="text-sm text-slate-600 dark:text-slate-400 truncate">
+              {editingMsg ? editingMsg.text : (replyTo.message_type === 'voice' ? 'رسالة صوتية' : replyTo.message_type === 'image' ? 'صورة' : replyTo.text)}
+            </p>
+          </div>
+          <button onClick={cancelAction} className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors" data-testid="cancel-reply-edit-btn">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
         </div>
       )}
 
@@ -344,16 +431,14 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
             <div className="flex-1 flex items-center gap-3 px-4 py-3 bg-red-50 dark:bg-red-900/20 rounded-xl">
               <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
               <span className="text-red-600 dark:text-red-400 font-medium text-sm">جاري التسجيل</span>
-              <span className="text-red-500 dark:text-red-400 font-mono text-sm mr-auto" data-testid="recording-duration">{formatRecordingTime(recordingDuration)}</span>
+              <span className="text-red-500 dark:text-red-400 font-mono text-sm mr-auto" data-testid="recording-duration">{formatRec(recordingDuration)}</span>
             </div>
-            <Button onClick={stopRecordingAndSend} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-6 rounded-xl" data-testid="send-voice-btn">
-              <Send className="w-5 h-5" />
-            </Button>
+            <Button onClick={stopRecordingAndSend} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-6 rounded-xl" data-testid="send-voice-btn"><Send className="w-5 h-5" /></Button>
           </div>
         ) : (
           <form onSubmit={handleSend} className="flex items-center gap-3">
             <div className="relative">
-              <button type="button" onClick={() => setShowAttachMenu(!showAttachMenu)} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors duration-200" data-testid="attach-btn">
+              <button type="button" onClick={() => setShowAttachMenu(!showAttachMenu)} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors" data-testid="attach-btn">
                 <Paperclip className="w-5 h-5 text-slate-500 dark:text-slate-400" />
               </button>
               {showAttachMenu && (
@@ -369,15 +454,13 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
             </div>
             <input type="file" ref={imageInputRef} accept="image/*" className="hidden" onChange={handleFileUpload} />
             <input type="file" ref={fileInputRef} accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.zip,.rar" className="hidden" onChange={handleFileUpload} />
-            <Input type="text" value={newMessage} onChange={handleInputChange} placeholder="اكتب رسالتك..." className="flex-1 focus:ring-2 focus:ring-emerald-500 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400" disabled={loading || uploading} data-testid="chat-message-input" />
+            <Input ref={inputRef} type="text" value={newMessage} onChange={handleInputChange} placeholder={editingMsg ? 'عدّل الرسالة...' : 'اكتب رسالتك...'} className="flex-1 focus:ring-2 focus:ring-emerald-500 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400" disabled={loading || uploading} data-testid="chat-message-input" />
             {newMessage.trim() ? (
-              <Button type="submit" disabled={loading || uploading} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-6 rounded-xl transition-colors duration-200" data-testid="chat-send-btn">
-                <Send className="w-5 h-5" />
-              </Button>
+              <Button type="submit" disabled={loading || uploading} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-6 rounded-xl transition-colors" data-testid="chat-send-btn"><Send className="w-5 h-5" /></Button>
+            ) : !editingMsg ? (
+              <button type="button" onMouseDown={startRecording} onTouchStart={startRecording} className="bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl transition-colors" data-testid="mic-btn"><Mic className="w-5 h-5" /></button>
             ) : (
-              <button type="button" onMouseDown={startRecording} onTouchStart={startRecording} className="bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl transition-colors duration-200" data-testid="mic-btn">
-                <Mic className="w-5 h-5" />
-              </button>
+              <button type="button" onClick={cancelAction} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors" data-testid="cancel-edit-btn"><X className="w-5 h-5 text-slate-500" /></button>
             )}
           </form>
         )}
