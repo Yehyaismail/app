@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext(null);
@@ -14,21 +14,45 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const refreshIntervalRef = useRef(null);
 
   const API_URL = process.env.REACT_APP_BACKEND_URL;
 
   useEffect(() => {
     checkAuth();
+    return () => {
+      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+    };
   }, []);
+
+  const startTokenRefresh = () => {
+    if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+    // Refresh access token every 12 minutes (token expires at 15 min)
+    refreshIntervalRef.current = setInterval(async () => {
+      try {
+        const { data } = await axios.post(`${API_URL}/api/auth/refresh`, {}, { withCredentials: true });
+        setUser(data);
+      } catch (error) {
+        setUser(false);
+        if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+      }
+    }, 12 * 60 * 1000);
+  };
 
   const checkAuth = async () => {
     try {
-      const { data } = await axios.get(`${API_URL}/api/auth/me`, {
-        withCredentials: true
-      });
+      const { data } = await axios.get(`${API_URL}/api/auth/me`, { withCredentials: true });
       setUser(data);
+      startTokenRefresh();
     } catch (error) {
-      setUser(false);
+      // Try refresh token
+      try {
+        const { data } = await axios.post(`${API_URL}/api/auth/refresh`, {}, { withCredentials: true });
+        setUser(data);
+        startTokenRefresh();
+      } catch (refreshError) {
+        setUser(false);
+      }
     } finally {
       setLoading(false);
     }
@@ -41,6 +65,7 @@ export const AuthProvider = ({ children }) => {
       { withCredentials: true }
     );
     setUser(data);
+    startTokenRefresh();
     return data;
   };
 
@@ -51,12 +76,18 @@ export const AuthProvider = ({ children }) => {
       { withCredentials: true }
     );
     setUser(data);
+    startTokenRefresh();
     return data;
   };
 
   const logout = async () => {
-    await axios.post(`${API_URL}/api/auth/logout`, {}, { withCredentials: true });
+    try {
+      await axios.post(`${API_URL}/api/auth/logout`, {}, { withCredentials: true });
+    } catch (e) {
+      // ignore
+    }
     setUser(false);
+    if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
   };
 
   return (

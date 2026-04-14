@@ -625,6 +625,51 @@ class ChatAppAPITester:
         
         return success
 
+    def test_auth_refresh_endpoint(self):
+        """Test auth refresh endpoint returns user data with role"""
+        # Login as admin first to get a valid session
+        login_success, _ = self.run_test(
+            "Admin Login for Refresh Test",
+            "POST",
+            "api/auth/login",
+            200,
+            data={"email": "admin@chatapp.com", "password": "admin123"}
+        )
+        
+        if not login_success:
+            return False
+            
+        # Test refresh endpoint
+        success, response = self.run_test(
+            "Auth Refresh Endpoint",
+            "POST",
+            "api/auth/refresh",
+            200
+        )
+        
+        if success:
+            # Verify response contains user data with role
+            if 'role' in response:
+                print(f"   ✅ Refresh endpoint returns role: {response.get('role')}")
+                if response.get('role') == 'admin':
+                    print(f"   ✅ Admin role correctly returned")
+                else:
+                    print(f"   ⚠️  Expected admin role, got: {response.get('role')}")
+            else:
+                print(f"   ❌ Refresh endpoint missing 'role' field")
+                return False
+                
+            # Check other required fields
+            required_fields = ['id', 'name', 'email']
+            for field in required_fields:
+                if field not in response:
+                    print(f"   ❌ Refresh endpoint missing '{field}' field")
+                    return False
+                    
+            print(f"   ✅ All required fields present in refresh response")
+        
+        return success
+
     def test_non_admin_access_admin_endpoints(self):
         """Test non-admin user cannot access admin endpoints"""
         if not self.test_user2:
@@ -684,6 +729,7 @@ def main():
         ("User Login", tester.test_user_login),
         ("Invalid Login", tester.test_invalid_login),
         ("Get Current User", tester.test_get_current_user),
+        ("Auth Refresh Endpoint", tester.test_auth_refresh_endpoint),
         ("Get Users List", tester.test_get_users_list),
         ("Upload Image File", tester.test_file_upload_image),
         ("Upload Document File", tester.test_file_upload_document),
