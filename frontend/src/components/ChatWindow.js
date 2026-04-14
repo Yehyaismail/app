@@ -3,10 +3,11 @@ import axios from 'axios';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square, ArrowRight, Reply, Pencil, Trash2, X, CornerDownLeft } from 'lucide-react';
+import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square, ArrowRight, Reply, Pencil, Trash2, X, CornerDownLeft, Smile } from 'lucide-react';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { VoicePlayer } from './VoicePlayer';
+import EmojiPicker from 'emoji-picker-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -84,6 +85,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   const [replyTo, setReplyTo] = useState(null);
   const [editingMsg, setEditingMsg] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -106,12 +108,17 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
-  // Close context menu on click outside
+  // Close context menu and emoji picker on click outside
   useEffect(() => {
-    const handler = () => setContextMenu(null);
+    const handler = (e) => {
+      setContextMenu(null);
+      if (showEmojiPicker && !e.target.closest('[data-testid="emoji-picker"]') && !e.target.closest('[data-testid="emoji-btn"]')) {
+        setShowEmojiPicker(false);
+      }
+    };
     window.addEventListener('click', handler);
     return () => window.removeEventListener('click', handler);
-  }, []);
+  }, [showEmojiPicker]);
 
   const loadMessages = async () => {
     if (!selectedUser) return;
@@ -166,6 +173,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
         setReplyTo(null);
       }
       setNewMessage('');
+      setShowEmojiPicker(false);
       await loadMessages(); onNewMessage();
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -217,6 +225,11 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     setReplyTo(null);
     setEditingMsg(null);
     setNewMessage('');
+  };
+
+  const onEmojiClick = (emojiData) => {
+    setNewMessage((prev) => prev + emojiData.emoji);
+    inputRef.current?.focus();
   };
 
   const openContextMenu = (e, msg) => {
@@ -454,6 +467,24 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
             </div>
             <input type="file" ref={imageInputRef} accept="image/*" className="hidden" onChange={handleFileUpload} />
             <input type="file" ref={fileInputRef} accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.zip,.rar" className="hidden" onChange={handleFileUpload} />
+            <div className="relative">
+              <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors" data-testid="emoji-btn">
+                <Smile className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+              </button>
+              {showEmojiPicker && (
+                <div className="absolute bottom-14 right-0 z-30" data-testid="emoji-picker">
+                  <EmojiPicker
+                    onEmojiClick={onEmojiClick}
+                    width={320}
+                    height={400}
+                    searchPlaceholder="ابحث عن إيموجي..."
+                    skinTonesDisabled
+                    previewConfig={{ showPreview: false }}
+                    lazyLoadEmojis
+                  />
+                </div>
+              )}
+            </div>
             <Input ref={inputRef} type="text" value={newMessage} onChange={handleInputChange} placeholder={editingMsg ? 'عدّل الرسالة...' : 'اكتب رسالتك...'} className="flex-1 focus:ring-2 focus:ring-emerald-500 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400" disabled={loading || uploading} data-testid="chat-message-input" />
             {newMessage.trim() ? (
               <Button type="submit" disabled={loading || uploading} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-6 rounded-xl transition-colors" data-testid="chat-send-btn"><Send className="w-5 h-5" /></Button>
