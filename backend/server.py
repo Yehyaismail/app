@@ -139,6 +139,9 @@ class MessageCreate(BaseModel):
 class MessageEdit(BaseModel):
     text: str
 
+class ReactionUpdate(BaseModel):
+    emoji: str
+
 class TypingUpdate(BaseModel):
     receiver_id: str
     is_typing: bool
@@ -317,7 +320,8 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
         "timestamp": datetime.now(timezone.utc),
         "status": "sent",
         "edited": False,
-        "deleted": False
+        "deleted": False,
+        "reactions": {}
     }
     result = await db.messages.insert_one(message_doc)
     
@@ -334,7 +338,8 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
         "timestamp": message_doc["timestamp"],
         "status": "sent",
         "edited": False,
-        "deleted": False
+        "deleted": False,
+        "reactions": {}
     }
 
 @api_router.get("/messages/{other_user_id}")
@@ -370,7 +375,8 @@ async def get_messages(other_user_id: str, current_user: dict = Depends(get_curr
                 "reply_to": msg.get("reply_to"),
                 "timestamp": msg["timestamp"],
                 "status": msg.get("status", "sent"),
-                "edited": False, "deleted": True
+                "edited": False, "deleted": True,
+                "reactions": {}
             })
         else:
             result.append({
@@ -386,7 +392,8 @@ async def get_messages(other_user_id: str, current_user: dict = Depends(get_curr
                 "timestamp": msg["timestamp"],
                 "status": msg.get("status", "sent"),
                 "edited": msg.get("edited", False),
-                "deleted": False
+                "deleted": False,
+                "reactions": msg.get("reactions", {})
             })
     return result
 
@@ -419,6 +426,29 @@ async def delete_message(message_id: str, current_user: dict = Depends(get_curre
         {"$set": {"deleted": True, "text": "", "file_url": None, "file_name": None, "file_type": None, "message_type": "text"}}
     )
     return {"message": "Message deleted", "id": message_id}
+
+@api_router.post("/messages/{message_id}/react")
+async def react_to_message(message_id: str, data: ReactionUpdate, current_user: dict = Depends(get_current_user)):
+    msg = await db.messages.find_one({"_id": ObjectId(message_id)})
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if msg.get("deleted"):
+        raise HTTPException(status_code=400, detail="Cannot react to deleted message")
+    
+    user_id = current_user["id"]
+    reactions = msg.get("reactions", {})
+    
+    # Toggle: if user already reacted with same emoji, remove it
+    if reactions.get(user_id) == data.emoji:
+        reactions.pop(user_id, None)
+    else:
+        reactions[user_id] = data.emoji
+    
+    await db.messages.update_one(
+        {"_id": ObjectId(message_id)},
+        {"$set": {"reactions": reactions}}
+    )
+    return {"message": "Reaction updated", "id": message_id, "reactions": reactions}
 
 # ===================== Conversation Routes =====================
 @api_router.get("/conversations")

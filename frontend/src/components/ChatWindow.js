@@ -86,6 +86,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   const [editingMsg, setEditingMsg] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [reactionPicker, setReactionPicker] = useState(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -108,10 +109,13 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
-  // Close context menu and emoji picker on click outside
+  // Close context menu, emoji picker, reaction picker on click outside
   useEffect(() => {
     const handler = (e) => {
       setContextMenu(null);
+      if (!e.target.closest('[data-testid="reaction-picker"]') && !e.target.closest('[data-testid="react-msg-btn"]')) {
+        setReactionPicker(null);
+      }
       if (showEmojiPicker && !e.target.closest('[data-testid="emoji-picker"]') && !e.target.closest('[data-testid="emoji-btn"]')) {
         setShowEmojiPicker(false);
       }
@@ -225,6 +229,17 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     setReplyTo(null);
     setEditingMsg(null);
     setNewMessage('');
+  };
+
+  const QUICK_REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🙏'];
+
+  const handleReaction = async (msgId, emoji) => {
+    try {
+      await axios.post(`${API_URL}/api/messages/${msgId}/react`, { emoji }, { withCredentials: true });
+      await loadMessages();
+    } catch (e) { console.error(e); }
+    setReactionPicker(null);
+    setContextMenu(null);
   };
 
   const onEmojiClick = (emojiData) => {
@@ -362,9 +377,49 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
                   <ReadReceipt status={msg.status} isOwn={isOwn} />
                 </div>
 
+                {/* Reactions display */}
+                {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5" data-testid="message-reactions">
+                    {Object.entries(
+                      Object.values(msg.reactions).reduce((acc, emoji) => {
+                        acc[emoji] = (acc[emoji] || 0) + 1;
+                        return acc;
+                      }, {})
+                    ).map(([emoji, count]) => (
+                      <button
+                        key={emoji}
+                        onClick={() => handleReaction(msg.id, emoji)}
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs border transition-colors ${
+                          msg.reactions[currentUser?.id] === emoji
+                            ? 'bg-emerald-100 dark:bg-emerald-900/40 border-emerald-300 dark:border-emerald-700'
+                            : 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600'
+                        }`}
+                        data-testid="reaction-badge"
+                      >
+                        <span>{emoji}</span>
+                        {count > 1 && <span className="text-slate-600 dark:text-slate-300">{count}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 {/* Hover action buttons */}
                 {!msg.deleted && (
                   <div className={`absolute top-1 ${isOwn ? 'left-1' : 'right-1'} opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5`}>
+                    <div className="relative">
+                      <button onClick={(e) => { e.stopPropagation(); setReactionPicker(reactionPicker === msg.id ? null : msg.id); }} className="p-1.5 bg-white dark:bg-slate-700 rounded-md shadow-sm hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors" data-testid="react-msg-btn">
+                        <Smile className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                      </button>
+                      {reactionPicker === msg.id && (
+                        <div className={`absolute bottom-8 ${isOwn ? 'left-0' : 'right-0'} bg-white dark:bg-slate-800 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 px-2 py-1 flex gap-1 z-30`} data-testid="reaction-picker" onClick={(e) => e.stopPropagation()}>
+                          {QUICK_REACTIONS.map((emoji) => (
+                            <button key={emoji} onClick={() => handleReaction(msg.id, emoji)} className="text-xl hover:scale-125 transition-transform p-0.5" data-testid={`reaction-${emoji}`}>
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <button onClick={() => handleReplyMessage(msg)} className="p-1.5 bg-white dark:bg-slate-700 rounded-md shadow-sm hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors" data-testid="reply-msg-btn">
                       <Reply className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                     </button>
@@ -390,11 +445,18 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
       {/* Context Menu */}
       {contextMenu && (
         <div
-          className="fixed bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1 z-50 min-w-[140px]"
+          className="fixed bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1 z-50 min-w-[160px]"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
           data-testid="message-context-menu"
         >
+          <div className="flex gap-1 px-3 py-2 border-b border-slate-100 dark:border-slate-700">
+            {QUICK_REACTIONS.map((emoji) => (
+              <button key={emoji} onClick={() => handleReaction(contextMenu.msg.id, emoji)} className="text-lg hover:scale-125 transition-transform p-0.5" data-testid={`ctx-reaction-${emoji}`}>
+                {emoji}
+              </button>
+            ))}
+          </div>
           <button onClick={() => handleReplyMessage(contextMenu.msg)} className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm text-slate-700 dark:text-slate-200 text-right" data-testid="ctx-reply-btn">
             <Reply className="w-4 h-4" /><span>رد</span>
           </button>
