@@ -50,3 +50,18 @@ code {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Minimize Emergent badge to not block chat input */
+#emergent-badge {
+  transform: scale(0.7) !important;
+  transform-origin: bottom left !important;
+  bottom: 4px !important;
+  left: 4px !important;
+  right: auto !important;
+  opacity: 0.5 !important;
+  transition: opacity 0.2s, transform 0.2s !important;
+}
+#emergent-badge:hover {
+  opacity: 1 !important;
+  transform: scale(0.8) !important;
+}
