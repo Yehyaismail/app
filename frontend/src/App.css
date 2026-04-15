@@ -65,3 +65,19 @@ code {
   opacity: 1 !important;
   transform: scale(0.8) !important;
 }
+
+/* Notification toast slide animation */
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.3s ease-out;
+}

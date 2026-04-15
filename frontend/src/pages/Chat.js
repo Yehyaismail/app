@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { Sidebar } from '../components/Sidebar';
 import { ChatWindow } from '../components/ChatWindow';
+import { NotificationToast } from '../components/NotificationToast';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -12,18 +13,14 @@ export const Chat = () => {
   const [allUsers, setAllUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [notificationPermission, setNotificationPermission] = useState('default');
+  const [notifications, setNotifications] = useState([]);
   const prevConversationsRef = useRef([]);
+  const notifIdRef = useRef(0);
 
+  // Request browser notification permission
   useEffect(() => {
-    // Request notification permission
-    if ('Notification' in window) {
-      setNotificationPermission(Notification.permission);
-      if (Notification.permission === 'default') {
-        Notification.requestPermission().then((perm) => {
-          setNotificationPermission(perm);
-        });
-      }
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
     }
   }, []);
 
@@ -33,43 +30,70 @@ export const Chat = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Update page title with unread count
+  useEffect(() => {
+    const totalUnread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+    document.title = totalUnread > 0 ? `(${totalUnread}) محادثات` : 'محادثات';
+  }, [conversations]);
+
   const playNotificationSound = useCallback(() => {
     try {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      oscillator.frequency.value = 600;
-      oscillator.type = 'sine';
-      gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-      oscillator.start(audioCtx.currentTime);
-      oscillator.stop(audioCtx.currentTime + 0.4);
-    } catch (e) {
-      // Audio not supported
-    }
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const now = ctx.currentTime;
+
+      // WhatsApp-like double tone
+      const playTone = (freq, start, dur) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = freq;
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.25, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.01, start + dur);
+        osc.start(start);
+        osc.stop(start + dur);
+      };
+
+      playTone(880, now, 0.15);
+      playTone(1100, now + 0.18, 0.15);
+    } catch (e) {}
   }, []);
 
   const sendBrowserNotification = useCallback((senderName, message) => {
-    if ('Notification' in window && Notification.permission === 'granted') {
+    if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
       try {
-        const notification = new Notification(senderName, {
+        const n = new Notification(senderName, {
           body: message,
           icon: '/favicon.ico',
-          tag: 'chat-notification',
+          tag: `chat-${Date.now()}`,
           silent: true
         });
-        notification.onclick = () => {
-          window.focus();
-          notification.close();
-        };
-        setTimeout(() => notification.close(), 5000);
-      } catch (e) {
-        // Notification not supported
-      }
+        n.onclick = () => { window.focus(); n.close(); };
+        setTimeout(() => n.close(), 5000);
+      } catch (e) {}
     }
   }, []);
+
+  const addInAppNotification = useCallback((senderName, senderId, message) => {
+    const id = ++notifIdRef.current;
+    const initial = senderName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+    setNotifications((prev) => [...prev.slice(-4), { id, senderName, senderId, message, senderInitial: initial }]);
+    // Auto dismiss after 4 seconds
+    setTimeout(() => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }, 4000);
+  }, []);
+
+  const dismissNotification = useCallback((id) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  const handleNotificationClick = useCallback((notif) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+    handleUserSelect(notif.senderId);
+  }, [conversations, allUsers]);
 
   const loadData = async () => {
     try {
@@ -78,33 +102,23 @@ export const Chat = () => {
         axios.get(`${API_URL}/api/users`, { withCredentials: true })
       ]);
 
-      const newConversations = convRes.data;
+      const newConvs = convRes.data;
       const prevConvs = prevConversationsRef.current;
 
-      // Check for new unread messages (compare unread counts)
       if (prevConvs.length > 0) {
-        newConversations.forEach((newConv) => {
-          const prevConv = prevConvs.find((p) => p.id === newConv.id);
-          if (prevConv && newConv.unread_count > prevConv.unread_count) {
-            // New message received
+        newConvs.forEach((nc) => {
+          const pc = prevConvs.find((p) => p.id === nc.id);
+          const isNew = (!pc && nc.unread_count > 0) || (pc && nc.unread_count > pc.unread_count);
+          if (isNew) {
             playNotificationSound();
-            sendBrowserNotification(
-              newConv.other_user.name,
-              newConv.last_message || 'رسالة جديدة'
-            );
-          } else if (!prevConv && newConv.unread_count > 0) {
-            // New conversation with unread messages
-            playNotificationSound();
-            sendBrowserNotification(
-              newConv.other_user.name,
-              newConv.last_message || 'رسالة جديدة'
-            );
+            sendBrowserNotification(nc.other_user.name, nc.last_message || 'رسالة جديدة');
+            addInAppNotification(nc.other_user.name, nc.other_user.id, nc.last_message || 'رسالة جديدة');
           }
         });
       }
 
-      prevConversationsRef.current = newConversations;
-      setConversations(newConversations);
+      prevConversationsRef.current = newConvs;
+      setConversations(newConvs);
       setAllUsers(usersRes.data);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -114,21 +128,21 @@ export const Chat = () => {
   };
 
   const handleUserSelect = (userId) => {
-    const userFromConv = conversations.find((c) => c.other_user.id === userId);
-    const userFromAll = allUsers.find((u) => u.id === userId);
-    setSelectedUser(userFromConv ? userFromConv.other_user : userFromAll);
+    const fromConv = conversations.find((c) => c.other_user.id === userId);
+    const fromAll = allUsers.find((u) => u.id === userId);
+    setSelectedUser(fromConv ? fromConv.other_user : fromAll);
   };
 
-  const handleBack = () => {
-    setSelectedUser(null);
-  };
-
-  const handleNewMessage = () => {
-    loadData();
-  };
+  const handleBack = () => setSelectedUser(null);
+  const handleNewMessage = () => loadData();
 
   return (
-    <div className="h-screen bg-slate-50 dark:bg-slate-900 grid grid-cols-12" data-testid="chat-page">
+    <div className="h-screen bg-slate-50 dark:bg-slate-900 grid grid-cols-12 relative" data-testid="chat-page">
+      <NotificationToast
+        notifications={notifications}
+        onDismiss={dismissNotification}
+        onClickNotification={handleNotificationClick}
+      />
       <div className={`col-span-12 md:col-span-4 lg:col-span-3 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 ${selectedUser ? 'hidden md:block' : ''}`}>
         <Sidebar
           conversations={conversations}
