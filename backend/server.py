@@ -450,6 +450,19 @@ async def react_to_message(message_id: str, data: ReactionUpdate, current_user: 
     )
     return {"message": "Reaction updated", "id": message_id, "reactions": reactions}
 
+@api_router.delete("/messages/conversation/{other_user_id}")
+async def clear_conversation(other_user_id: str, current_user: dict = Depends(get_current_user)):
+    current_user_oid = ObjectId(current_user["id"])
+    other_user_oid = ObjectId(other_user_id)
+    
+    result = await db.messages.delete_many({
+        "$or": [
+            {"sender_id": current_user_oid, "receiver_id": other_user_oid},
+            {"sender_id": other_user_oid, "receiver_id": current_user_oid}
+        ]
+    })
+    return {"message": "Conversation cleared", "deleted_count": result.deleted_count}
+
 # ===================== Conversation Routes =====================
 @api_router.get("/conversations")
 async def get_conversations(current_user: dict = Depends(get_current_user)):

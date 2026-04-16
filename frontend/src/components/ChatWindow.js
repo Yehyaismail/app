@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Avatar, AvatarFallback } from './ui/avatar';
-import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square, ArrowRight, Reply, Pencil, Trash2, X, CornerDownLeft, Smile } from 'lucide-react';
+import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square, ArrowRight, Reply, Pencil, Trash2, X, CornerDownLeft, Smile, Eraser } from 'lucide-react';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { VoicePlayer } from './VoicePlayer';
@@ -96,6 +95,9 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   const audioChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
   const inputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const isUserScrolledUpRef = useRef(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   useEffect(() => {
     if (selectedUser) {
@@ -107,7 +109,19 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     }
   }, [selectedUser]);
 
-  useEffect(() => { scrollToBottom(); }, [messages]);
+  // Only auto-scroll when new messages arrive, not when reading old messages
+  useEffect(() => {
+    if (!isUserScrolledUpRef.current) {
+      scrollToBottom();
+    }
+  }, [messages]);
+
+  const handleScroll = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isUserScrolledUpRef.current = distFromBottom > 100;
+  };
 
   // Close context menu, emoji picker, reaction picker on click outside
   useEffect(() => {
@@ -130,7 +144,10 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
       const { data } = await axios.get(`${API_URL}/api/messages/${selectedUser.id}`, { withCredentials: true });
       const prev = prevMessagesRef.current;
       if (prev.length > 0 && data.length > prev.length) {
-        data.slice(prev.length).forEach((m) => { if (m.sender_id !== currentUser?.id) playNotificationSound(); });
+        const newIncoming = data.slice(prev.length).some((m) => m.sender_id !== currentUser?.id);
+        if (newIncoming) playNotificationSound();
+        // Auto-scroll to bottom on new messages
+        isUserScrolledUpRef.current = false;
       }
       prevMessagesRef.current = data;
       setMessages(data);
@@ -147,12 +164,15 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     } catch (e) {}
   };
 
-  const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); };
+  const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); isUserScrolledUpRef.current = false; };
   const sendTypingStatus = async (t) => { if (!selectedUser) return; try { await axios.post(`${API_URL}/api/typing`, { receiver_id: selectedUser.id, is_typing: t }, { withCredentials: true }); } catch (e) {} };
   const checkTypingStatus = async () => { if (!selectedUser) return; try { const { data } = await axios.get(`${API_URL}/api/typing/${selectedUser.id}`, { withCredentials: true }); setIsOtherTyping(data.is_typing); } catch (e) {} };
 
   const handleInputChange = (e) => {
     setNewMessage(e.target.value);
+    // Auto-resize textarea
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
     sendTypingStatus(true);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => sendTypingStatus(false), 3000);
@@ -231,6 +251,17 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     setNewMessage('');
   };
 
+  const handleClearChat = async () => {
+    if (!selectedUser) return;
+    try {
+      await axios.delete(`${API_URL}/api/messages/conversation/${selectedUser.id}`, { withCredentials: true });
+      setMessages([]);
+      prevMessagesRef.current = [];
+      onNewMessage();
+    } catch (e) { console.error(e); }
+    setShowClearConfirm(false);
+  };
+
   const QUICK_REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🙏'];
 
   const handleReaction = async (msgId, emoji) => {
@@ -300,7 +331,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
 
   const formatRec = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
   const getInitials = (n) => n.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
-  const formatTime = (ts) => { try { return format(new Date(ts), 'p', { locale: ar }); } catch { return ''; } };
+  const formatTime = (ts) => { try { return format(new Date(ts), 'hh:mm a', { locale: ar }); } catch { return ''; } };
 
   const getReplyMessage = (replyId) => messages.find((m) => m.id === replyId);
 
@@ -325,17 +356,20 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
             <Avatar className="w-10 h-10 bg-emerald-600"><AvatarFallback className="text-white font-medium">{getInitials(selectedUser.name)}</AvatarFallback></Avatar>
             {selectedUser.online && <div className="absolute bottom-0 left-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full"></div>}
           </div>
-          <div>
+          <div className="flex-1">
             <p className="font-medium text-slate-900 dark:text-slate-100">{selectedUser.name}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {isOtherTyping ? <span className="text-emerald-600 dark:text-emerald-400 font-medium" data-testid="typing-indicator">يكتب الآن...</span> : (selectedUser.online ? 'متصل' : 'غير متصل')}
             </p>
           </div>
+          <button onClick={() => setShowClearConfirm(true)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors" title="مسح المحادثة" data-testid="clear-chat-btn">
+            <Eraser className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+          </button>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3" data-testid="chat-message-list">
+      <div ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 space-y-3" data-testid="chat-message-list">
         {messages.map((msg) => {
           const isOwn = msg.sender_id === currentUser?.id;
           const repliedMsg = msg.reply_to ? getReplyMessage(msg.reply_to) : null;
@@ -366,7 +400,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
                 ) : (
                   <>
                     <FilePreview msg={msg} />
-                    {msg.message_type === 'text' && <p className="text-base leading-relaxed">{msg.text}</p>}
+                    {msg.message_type === 'text' && <p className="text-base leading-relaxed whitespace-pre-wrap">{msg.text}</p>}
                   </>
                 )}
                 <div className="flex items-center justify-between gap-2 mt-1">
@@ -441,6 +475,20 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
         })}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Clear Chat Confirmation */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setShowClearConfirm(false)} data-testid="clear-chat-overlay">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-6 max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">مسح المحادثة</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">هل تريد حذف جميع رسائل هذه المحادثة نهائياً؟ لا يمكن التراجع عن هذا الإجراء.</p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setShowClearConfirm(false)} className="px-4 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" data-testid="cancel-clear-btn">إلغاء</button>
+              <button onClick={handleClearChat} className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors" data-testid="confirm-clear-btn">مسح الكل</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (
@@ -547,7 +595,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
                 </div>
               )}
             </div>
-            <Input ref={inputRef} type="text" value={newMessage} onChange={handleInputChange} placeholder={editingMsg ? 'عدّل الرسالة...' : 'اكتب رسالتك...'} className="flex-1 focus:ring-2 focus:ring-emerald-500 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400" disabled={loading || uploading} data-testid="chat-message-input" />
+            <textarea ref={inputRef} value={newMessage} onChange={handleInputChange} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }} placeholder={editingMsg ? 'عدّل الرسالة...' : 'اكتب رسالتك...'} className="flex-1 resize-none min-h-[44px] max-h-[120px] py-2.5 px-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base leading-relaxed" disabled={loading || uploading} rows={1} data-testid="chat-message-input" />
             {newMessage.trim() ? (
               <Button type="submit" disabled={loading || uploading} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-6 rounded-xl transition-colors" data-testid="chat-send-btn"><Send className="w-5 h-5" /></Button>
             ) : !editingMsg ? (
