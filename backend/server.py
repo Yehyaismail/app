@@ -592,21 +592,30 @@ async def admin_get_users(current_user: dict = Depends(get_admin_user)):
         {"_id": 1, "name": 1, "email": 1, "online": 1, "last_seen": 1, "created_at": 1, "role": 1}
     )
     users = await users_cursor.to_list(500)
+    if not users:
+        return []
+    
+    # Batch fetch message counts in ONE aggregation
+    user_oids = [u["_id"] for u in users]
+    count_pipeline = [
+        {"$match": {"$or": [{"sender_id": {"$in": user_oids}}, {"receiver_id": {"$in": user_oids}}]}},
+        {"$project": {"user": {"$cond": [{"$in": ["$sender_id", user_oids]}, "$sender_id", "$receiver_id"]}}},
+        {"$group": {"_id": "$user", "count": {"$sum": 1}}}
+    ]
+    counts = await db.messages.aggregate(count_pipeline).to_list(1000)
+    msg_count_map = {doc["_id"]: doc["count"] for doc in counts}
+    
     result = []
     for u in users:
-        user_id = str(u["_id"])
-        msg_count = await db.messages.count_documents({
-            "$or": [{"sender_id": u["_id"]}, {"receiver_id": u["_id"]}]
-        })
         result.append({
-            "id": user_id,
+            "id": str(u["_id"]),
             "name": u["name"],
             "email": u["email"],
             "online": u.get("online", False),
             "last_seen": u.get("last_seen"),
             "created_at": u.get("created_at"),
             "role": u.get("role", "user"),
-            "message_count": msg_count
+            "message_count": msg_count_map.get(u["_id"], 0)
         })
     return result
 
