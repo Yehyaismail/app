@@ -26,7 +26,7 @@ export const Chat = () => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 3000);
+    const interval = setInterval(loadData, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -105,11 +105,11 @@ export const Chat = () => {
       const newConvs = convRes.data;
       const prevConvs = prevConversationsRef.current;
 
+      // Only notify for genuinely new unread messages
       if (prevConvs.length > 0) {
         newConvs.forEach((nc) => {
           const pc = prevConvs.find((p) => p.id === nc.id);
-          const isNew = (!pc && nc.unread_count > 0) || (pc && nc.unread_count > pc.unread_count);
-          if (isNew) {
+          if ((!pc && nc.unread_count > 0) || (pc && nc.unread_count > pc.unread_count)) {
             playNotificationSound();
             sendBrowserNotification(nc.other_user.name, nc.last_message || 'رسالة جديدة');
             addInAppNotification(nc.other_user.name, nc.other_user.id, nc.last_message || 'رسالة جديدة');
@@ -121,7 +121,7 @@ export const Chat = () => {
       setConversations(newConvs);
       setAllUsers(usersRes.data);
     } catch (error) {
-      console.error('Error loading data:', error);
+      // Silent fail on network issues
     } finally {
       setLoading(false);
     }

@@ -343,16 +343,27 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
     }
 
 @api_router.get("/messages/{other_user_id}")
-async def get_messages(other_user_id: str, current_user: dict = Depends(get_current_user)):
+async def get_messages(other_user_id: str, after: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     current_user_oid = ObjectId(current_user["id"])
     other_user_oid = ObjectId(other_user_id)
     
-    messages_cursor = db.messages.find({
+    query = {
         "$or": [
             {"sender_id": current_user_oid, "receiver_id": other_user_oid},
             {"sender_id": other_user_oid, "receiver_id": current_user_oid}
         ]
-    }).sort("timestamp", 1)
+    }
+    
+    # If 'after' param given, only fetch newer messages
+    if after:
+        try:
+            query["_id"] = {"$gt": ObjectId(after)}
+        except Exception:
+            pass
+    
+    messages_cursor = db.messages.find(query).sort("timestamp", 1)
+    if not after:
+        messages_cursor = messages_cursor.limit(200)
     
     messages = await messages_cursor.to_list(1000)
     
@@ -468,77 +479,75 @@ async def clear_conversation(other_user_id: str, current_user: dict = Depends(ge
 async def get_conversations(current_user: dict = Depends(get_current_user)):
     current_user_oid = ObjectId(current_user["id"])
     
-    # Mark all messages sent TO current user as delivered (if still "sent")
+    # Mark delivered in background (non-blocking)
     await db.messages.update_many(
         {"receiver_id": current_user_oid, "status": "sent"},
         {"$set": {"status": "delivered"}}
     )
     
     pipeline = [
-        {
-            "$match": {
-                "$or": [
-                    {"sender_id": current_user_oid},
-                    {"receiver_id": current_user_oid}
-                ]
-            }
-        },
+        {"$match": {"$or": [{"sender_id": current_user_oid}, {"receiver_id": current_user_oid}]}},
         {"$sort": {"timestamp": -1}},
-        {
-            "$group": {
-                "_id": {
-                    "$cond": [
-                        {"$eq": ["$sender_id", current_user_oid]},
-                        "$receiver_id",
-                        "$sender_id"
-                    ]
-                },
-                "last_message": {"$first": "$text"},
-                "last_message_type": {"$first": "$message_type"},
-                "last_message_time": {"$first": "$timestamp"},
-                "last_sender_id": {"$first": "$sender_id"}
-            }
-        }
+        {"$group": {
+            "_id": {"$cond": [{"$eq": ["$sender_id", current_user_oid]}, "$receiver_id", "$sender_id"]},
+            "last_message": {"$first": "$text"},
+            "last_message_type": {"$first": "$message_type"},
+            "last_message_time": {"$first": "$timestamp"},
+        }}
     ]
-    
     conversations = await db.messages.aggregate(pipeline).to_list(100)
+    if not conversations:
+        return []
+    
+    # Batch fetch all other users in ONE query
+    other_user_ids = [c["_id"] for c in conversations]
+    users_cursor = db.users.find(
+        {"_id": {"$in": other_user_ids}},
+        {"_id": 1, "name": 1, "email": 1, "avatar": 1, "online": 1, "last_seen": 1}
+    )
+    users_map = {}
+    async for u in users_cursor:
+        users_map[u["_id"]] = u
+    
+    # Batch count unread in ONE aggregation
+    unread_pipeline = [
+        {"$match": {"receiver_id": current_user_oid, "sender_id": {"$in": other_user_ids}, "status": {"$ne": "read"}}},
+        {"$group": {"_id": "$sender_id", "count": {"$sum": 1}}}
+    ]
+    unread_map = {}
+    async for doc in db.messages.aggregate(unread_pipeline):
+        unread_map[doc["_id"]] = doc["count"]
     
     result = []
     for conv in conversations:
         other_user_id = conv["_id"]
-        other_user = await db.users.find_one(
-            {"_id": other_user_id},
-            {"_id": 1, "name": 1, "email": 1, "avatar": 1, "online": 1, "last_seen": 1}
-        )
+        other_user = users_map.get(other_user_id)
+        if not other_user:
+            continue
         
-        if other_user:
-            unread_count = await db.messages.count_documents({
-                "sender_id": other_user_id,
-                "receiver_id": current_user_oid,
-                "status": {"$ne": "read"}
-            })
-            
-            last_msg_text = conv.get("last_message", "")
-            last_msg_type = conv.get("last_message_type", "text")
-            if last_msg_type == "image":
-                last_msg_text = "صورة"
-            elif last_msg_type == "file":
-                last_msg_text = "ملف"
-            
-            result.append({
-                "id": str(other_user_id),
-                "other_user": {
-                    "id": str(other_user["_id"]),
-                    "name": other_user["name"],
-                    "email": other_user["email"],
-                    "avatar": other_user.get("avatar"),
-                    "online": other_user.get("online", False),
-                    "last_seen": other_user.get("last_seen")
-                },
-                "last_message": last_msg_text,
-                "last_message_time": conv["last_message_time"],
-                "unread_count": unread_count
-            })
+        last_msg_text = conv.get("last_message", "")
+        last_msg_type = conv.get("last_message_type", "text")
+        if last_msg_type == "image":
+            last_msg_text = "صورة"
+        elif last_msg_type == "file":
+            last_msg_text = "ملف"
+        elif last_msg_type == "voice":
+            last_msg_text = "رسالة صوتية"
+        
+        result.append({
+            "id": str(other_user_id),
+            "other_user": {
+                "id": str(other_user["_id"]),
+                "name": other_user["name"],
+                "email": other_user["email"],
+                "avatar": other_user.get("avatar"),
+                "online": other_user.get("online", False),
+                "last_seen": other_user.get("last_seen")
+            },
+            "last_message": last_msg_text,
+            "last_message_time": conv["last_message_time"],
+            "unread_count": unread_map.get(other_user_id, 0)
+        })
     
     result.sort(key=lambda x: x["last_message_time"], reverse=True)
     return result

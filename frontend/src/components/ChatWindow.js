@@ -101,10 +101,11 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
 
   useEffect(() => {
     if (selectedUser) {
+      prevMessagesRef.current = [];
       loadMessages();
       checkTypingStatus();
-      const i1 = setInterval(loadMessages, 2000);
-      const i2 = setInterval(checkTypingStatus, 1500);
+      const i1 = setInterval(pollNewMessages, 4000);
+      const i2 = setInterval(checkTypingStatus, 3000);
       return () => { clearInterval(i1); clearInterval(i2); sendTypingStatus(false); };
     }
   }, [selectedUser]);
@@ -142,15 +143,35 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     if (!selectedUser) return;
     try {
       const { data } = await axios.get(`${API_URL}/api/messages/${selectedUser.id}`, { withCredentials: true });
-      const prev = prevMessagesRef.current;
-      if (prev.length > 0 && data.length > prev.length) {
-        const newIncoming = data.slice(prev.length).some((m) => m.sender_id !== currentUser?.id);
-        if (newIncoming) playNotificationSound();
-        // Auto-scroll to bottom on new messages
-        isUserScrolledUpRef.current = false;
-      }
       prevMessagesRef.current = data;
       setMessages(data);
+    } catch (e) {}
+  };
+
+  const pollNewMessages = async () => {
+    if (!selectedUser) return;
+    try {
+      const prev = prevMessagesRef.current;
+      const lastId = prev.length > 0 ? prev[prev.length - 1].id : null;
+      const url = lastId
+        ? `${API_URL}/api/messages/${selectedUser.id}?after=${lastId}`
+        : `${API_URL}/api/messages/${selectedUser.id}`;
+      const { data } = await axios.get(url, { withCredentials: true });
+
+      if (lastId && data.length > 0) {
+        // Append only new messages
+        const updated = [...prev, ...data];
+        prevMessagesRef.current = updated;
+        setMessages(updated);
+        const hasIncoming = data.some((m) => m.sender_id !== currentUser?.id);
+        if (hasIncoming) {
+          playNotificationSound();
+          isUserScrolledUpRef.current = false;
+        }
+      } else if (!lastId) {
+        prevMessagesRef.current = data;
+        setMessages(data);
+      }
     } catch (e) {}
   };
 
@@ -189,16 +210,25 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
       if (editingMsg) {
         await axios.put(`${API_URL}/api/messages/${editingMsg.id}`, { text: newMessage }, { withCredentials: true });
         setEditingMsg(null);
+        // Refresh to get updated message
+        await loadMessages();
       } else {
-        await axios.post(`${API_URL}/api/messages`, {
+        const { data: sentMsg } = await axios.post(`${API_URL}/api/messages`, {
           receiver_id: selectedUser.id, text: newMessage, message_type: 'text',
           reply_to: replyTo?.id || null
         }, { withCredentials: true });
         setReplyTo(null);
+        // Optimistic: add message locally immediately
+        const updated = [...prevMessagesRef.current, sentMsg];
+        prevMessagesRef.current = updated;
+        setMessages(updated);
+        isUserScrolledUpRef.current = false;
       }
       setNewMessage('');
       setShowEmojiPicker(false);
-      await loadMessages(); onNewMessage();
+      // Reset textarea height
+      if (inputRef.current) inputRef.current.style.height = 'auto';
+      onNewMessage();
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
