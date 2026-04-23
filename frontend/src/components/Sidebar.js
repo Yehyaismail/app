@@ -27,7 +27,7 @@ export const Sidebar = ({ conversations, allUsers, selectedUserId, onSelectUser,
 
   return (
     <div className="h-screen flex flex-col bg-white dark:bg-slate-800">
-      <div className="p-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
+      <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 sticky top-0 z-20 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <Avatar className="w-10 h-10 bg-emerald-600">

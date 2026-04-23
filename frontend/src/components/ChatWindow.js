@@ -151,27 +151,21 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   const pollNewMessages = async () => {
     if (!selectedUser) return;
     try {
+      // Full reload every poll to get updated statuses (read/delivered)
+      const { data } = await axios.get(`${API_URL}/api/messages/${selectedUser.id}`, { withCredentials: true });
       const prev = prevMessagesRef.current;
-      const lastId = prev.length > 0 ? prev[prev.length - 1].id : null;
-      const url = lastId
-        ? `${API_URL}/api/messages/${selectedUser.id}?after=${lastId}`
-        : `${API_URL}/api/messages/${selectedUser.id}`;
-      const { data } = await axios.get(url, { withCredentials: true });
-
-      if (lastId && data.length > 0) {
-        // Append only new messages
-        const updated = [...prev, ...data];
-        prevMessagesRef.current = updated;
-        setMessages(updated);
-        const hasIncoming = data.some((m) => m.sender_id !== currentUser?.id);
+      
+      // Check for new incoming messages
+      if (prev.length > 0 && data.length > prev.length) {
+        const hasIncoming = data.slice(prev.length).some((m) => m.sender_id !== currentUser?.id);
         if (hasIncoming) {
           playNotificationSound();
           isUserScrolledUpRef.current = false;
         }
-      } else if (!lastId) {
-        prevMessagesRef.current = data;
-        setMessages(data);
       }
+      
+      prevMessagesRef.current = data;
+      setMessages(data);
     } catch (e) {}
   };
 
