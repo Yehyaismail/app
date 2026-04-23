@@ -99,9 +99,14 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   const isUserScrolledUpRef = useRef(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
+  const isFirstLoadRef = useRef(true);
+
   useEffect(() => {
     if (selectedUser) {
+      isFirstLoadRef.current = true;
+      isUserScrolledUpRef.current = false;
       prevMessagesRef.current = [];
+      setMessages([]);
       loadMessages();
       checkTypingStatus();
       const i1 = setInterval(pollNewMessages, 4000);
@@ -110,18 +115,28 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     }
   }, [selectedUser]);
 
-  // Only auto-scroll when new messages arrive, not when reading old messages
+  // Scroll logic: instant on first load, smooth on new messages, skip when reading old
   useEffect(() => {
-    if (!isUserScrolledUpRef.current) {
-      scrollToBottom();
+    if (messages.length === 0) return;
+    if (isFirstLoadRef.current) {
+      // First load: jump to bottom instantly after render
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
+      });
+      isUserScrolledUpRef.current = false;
+      isFirstLoadRef.current = false;
+    } else if (!isUserScrolledUpRef.current) {
+      // New messages while at bottom: smooth scroll
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
+    // If user scrolled up: do nothing, let them read
   }, [messages]);
 
   const handleScroll = () => {
     const el = messagesContainerRef.current;
     if (!el) return;
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    isUserScrolledUpRef.current = distFromBottom > 100;
+    isUserScrolledUpRef.current = distFromBottom > 150;
   };
 
   // Close context menu, emoji picker, reaction picker on click outside
@@ -179,7 +194,10 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     } catch (e) {}
   };
 
-  const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); isUserScrolledUpRef.current = false; };
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    isUserScrolledUpRef.current = false;
+  };
   const sendTypingStatus = async (t) => { if (!selectedUser) return; try { await axios.post(`${API_URL}/api/typing`, { receiver_id: selectedUser.id, is_typing: t }, { withCredentials: true }); } catch (e) {} };
   const checkTypingStatus = async () => { if (!selectedUser) return; try { const { data } = await axios.get(`${API_URL}/api/typing/${selectedUser.id}`, { withCredentials: true }); setIsOtherTyping(data.is_typing); } catch (e) {} };
 
