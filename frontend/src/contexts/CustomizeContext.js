@@ -4,6 +4,7 @@ const DEFAULT_SETTINGS = {
   avatarColor: '#059669',
   chatBg: '',
   chatBgColor: '',
+  chatBgImage: '',
   sentBubbleColor: '',
   receivedBubbleColor: '',
   fontFamily: '',

@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Button } from './ui/button';
-import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square, ArrowRight, Reply, Pencil, Trash2, X, CornerDownLeft, Smile, Eraser, FileDown, UserPen } from 'lucide-react';
+import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square, ArrowRight, Reply, Pencil, Trash2, X, CornerDownLeft, Smile, Eraser, FileDown, UserPen, Video, Play } from 'lucide-react';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { VoicePlayer } from './VoicePlayer';
 import EmojiPicker from 'emoji-picker-react';
 import { useCustomize } from '../contexts/CustomizeContext';
+import { MediaViewer } from './MediaViewer';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -18,16 +19,16 @@ const ReadReceipt = ({ status, isOwn }) => {
   return <Check className="w-4 h-4 text-slate-400 dark:text-slate-500 inline-block" />;
 };
 
-const FilePreview = ({ msg }) => {
+const FilePreview = ({ msg, onOpenMedia }) => {
   const [blobUrl, setBlobUrl] = useState(null);
   const [loadingFile, setLoadingFile] = useState(false);
 
   useEffect(() => {
-    if (msg.message_type === 'image' && msg.file_url) loadImage();
+    if ((msg.message_type === 'image' || msg.message_type === 'video') && msg.file_url) loadMedia();
     return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
   }, [msg.file_url]);
 
-  const loadImage = async () => {
+  const loadMedia = async () => {
     try {
       setLoadingFile(true);
       const res = await axios.get(`${API_URL}/api/files/${msg.file_url}`, { withCredentials: true, responseType: 'blob' });
@@ -50,14 +51,44 @@ const FilePreview = ({ msg }) => {
         {loadingFile ? (
           <div className="w-48 h-48 bg-slate-200 dark:bg-slate-700 animate-pulse rounded-lg flex items-center justify-center"><Image className="w-8 h-8 text-slate-400" /></div>
         ) : blobUrl ? (
-          <img src={blobUrl} alt="" className="max-w-[250px] max-h-[250px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={() => window.open(blobUrl, '_blank')} data-testid="chat-image-preview" />
+          <img src={blobUrl} alt="" className="max-w-[250px] max-h-[250px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={() => onOpenMedia(blobUrl, 'image', msg.file_name)} data-testid="chat-image-preview" />
         ) : (
           <div className="w-48 h-48 bg-slate-200 dark:bg-slate-700 rounded-lg flex items-center justify-center"><Image className="w-8 h-8 text-slate-400" /></div>
         )}
       </div>
     );
   }
-  if (msg.message_type === 'voice') return <div className="mb-1"><VoicePlayer fileUrl={msg.file_url} duration={msg.voice_duration} /></div>;
+
+  if (msg.message_type === 'video') {
+    return (
+      <div className="mb-2">
+        {loadingFile ? (
+          <div className="w-56 h-40 bg-slate-200 dark:bg-slate-700 animate-pulse rounded-lg flex items-center justify-center"><Video className="w-8 h-8 text-slate-400" /></div>
+        ) : blobUrl ? (
+          <div className="relative cursor-pointer group" onClick={() => onOpenMedia(blobUrl, 'video', msg.file_name)}>
+            <video src={blobUrl} className="max-w-[280px] max-h-[200px] rounded-lg object-cover" data-testid="chat-video-preview" />
+            <div className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center group-hover:bg-black/40 transition-colors">
+              <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center"><Play className="w-6 h-6 text-slate-900 ml-1" /></div>
+            </div>
+          </div>
+        ) : (
+          <div className="w-56 h-40 bg-slate-200 dark:bg-slate-700 rounded-lg flex items-center justify-center"><Video className="w-8 h-8 text-slate-400" /></div>
+        )}
+      </div>
+    );
+  }
+
+  if (msg.message_type === 'voice') {
+    return (
+      <div className="mb-1 flex items-center gap-2">
+        <div className="flex-1"><VoicePlayer fileUrl={msg.file_url} duration={msg.voice_duration} /></div>
+        <button onClick={handleDownload} className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors flex-shrink-0" title="حفظ" data-testid="voice-download-btn">
+          <Download className="w-4 h-4 text-slate-400" />
+        </button>
+      </div>
+    );
+  }
+
   if (msg.message_type === 'file') {
     return (
       <div className="mb-2 flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" onClick={handleDownload} data-testid="chat-file-preview">
@@ -91,6 +122,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
+  const videoInputRef = useRef(null);
   const prevMessagesRef = useRef([]);
   const typingTimeoutRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -103,6 +135,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   const [deleteMenuMsg, setDeleteMenuMsg] = useState(null);
   const [showNicknameDialog, setShowNicknameDialog] = useState(false);
   const [nicknameInput, setNicknameInput] = useState('');
+  const [mediaView, setMediaView] = useState(null);
 
   const isFirstLoadRef = useRef(true);
 
@@ -257,16 +290,16 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     try {
       const fd = new FormData(); fd.append('file', file);
       const up = await axios.post(`${API_URL}/api/upload`, fd, { withCredentials: true, headers: { 'Content-Type': 'multipart/form-data' } });
-      const mt = up.data.category === 'image' ? 'image' : 'file';
+      const mt = up.data.category === 'image' ? 'image' : up.data.category === 'video' ? 'video' : 'file';
       await axios.post(`${API_URL}/api/messages`, {
-        receiver_id: selectedUser.id, text: mt === 'image' ? 'صورة' : file.name, message_type: mt,
+        receiver_id: selectedUser.id, text: mt === 'image' ? 'صورة' : mt === 'video' ? 'فيديو' : file.name, message_type: mt,
         file_url: up.data.storage_path, file_name: up.data.original_filename, file_type: up.data.content_type,
         reply_to: replyTo?.id || null
       }, { withCredentials: true });
       setReplyTo(null);
       await loadMessages(); onNewMessage();
     } catch (e) {}
-    finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; if (imageInputRef.current) imageInputRef.current.value = ''; }
+    finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; if (imageInputRef.current) imageInputRef.current.value = ''; if (videoInputRef.current) videoInputRef.current.value = ''; }
   };
 
   const handleDeleteMessage = async (msgId, mode = 'for_all') => {
@@ -402,7 +435,12 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   const getReplyMessage = (replyId) => messages.find((m) => m.id === replyId);
 
   const fontSizeClass = { sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-xl' }[settings.fontSize] || 'text-base';
-  const chatStyle = { fontFamily: settings.fontFamily || undefined, backgroundColor: settings.chatBgColor || undefined };
+  const chatStyle = { fontFamily: settings.fontFamily || undefined };
+  const chatBgStyle = settings.chatBgImage
+    ? { backgroundImage: `url(${settings.chatBgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : settings.chatBgColor ? { backgroundColor: settings.chatBgColor } : {};
+
+  const openMedia = (src, type, fileName) => setMediaView({ src, type, fileName });
 
   if (!selectedUser) {
     return (
@@ -444,7 +482,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
       </div>
 
       {/* Messages */}
-      <div ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 space-y-3" data-testid="chat-message-list">
+      <div ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 space-y-3" style={chatBgStyle} data-testid="chat-message-list">
         {messages.map((msg) => {
           const isOwn = msg.sender_id === currentUser?.id;
           const repliedMsg = msg.reply_to ? getReplyMessage(msg.reply_to) : null;
@@ -482,7 +520,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
                   <p className="text-sm italic text-slate-400 dark:text-slate-500">تم حذف هذه الرسالة</p>
                 ) : (
                   <>
-                    <FilePreview msg={msg} />
+                    <FilePreview msg={msg} onOpenMedia={openMedia} />
                     {msg.message_type === 'text' && <p className={`${fontSizeClass} leading-relaxed whitespace-pre-wrap`}>{msg.text}</p>}
                   </>
                 )}
@@ -606,6 +644,11 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
         </div>
       )}
 
+      {/* Media Viewer */}
+      {mediaView && (
+        <MediaViewer src={mediaView.src} type={mediaView.type} fileName={mediaView.fileName} onClose={() => setMediaView(null)} />
+      )}
+
       {/* Context Menu */}
       {contextMenu && (
         <div
@@ -688,6 +731,9 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
                   <button type="button" onClick={() => imageInputRef.current?.click()} className="flex items-center gap-3 w-full p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors text-right" data-testid="attach-image-btn">
                     <Image className="w-5 h-5 text-emerald-600" /><span className="text-sm text-slate-700 dark:text-slate-200">صورة</span>
                   </button>
+                  <button type="button" onClick={() => videoInputRef.current?.click()} className="flex items-center gap-3 w-full p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors text-right" data-testid="attach-video-btn">
+                    <Video className="w-5 h-5 text-purple-600" /><span className="text-sm text-slate-700 dark:text-slate-200">فيديو</span>
+                  </button>
                   <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-3 w-full p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors text-right" data-testid="attach-file-btn">
                     <FileText className="w-5 h-5 text-blue-600" /><span className="text-sm text-slate-700 dark:text-slate-200">ملف</span>
                   </button>
@@ -695,7 +741,8 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
               )}
             </div>
             <input type="file" ref={imageInputRef} accept="image/*" className="hidden" onChange={handleFileUpload} />
-            <input type="file" ref={fileInputRef} accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.zip,.rar" className="hidden" onChange={handleFileUpload} />
+            <input type="file" ref={videoInputRef} accept="video/*" className="hidden" onChange={handleFileUpload} />
+            <input type="file" ref={fileInputRef} accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.zip,.rar,.mp3,.wav,.ogg,.aac" className="hidden" onChange={handleFileUpload} />
             <div className="relative">
               <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors" data-testid="emoji-btn">
                 <Smile className="w-5 h-5 text-slate-500 dark:text-slate-400" />

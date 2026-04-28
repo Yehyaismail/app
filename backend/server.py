@@ -278,7 +278,8 @@ async def upload_file(file: UploadFile = File(...), current_user: dict = Depends
     
     # Determine file category
     image_exts = {"jpg", "jpeg", "png", "gif", "webp"}
-    file_category = "image" if ext in image_exts else "file"
+    video_exts = {"mp4", "mov", "avi", "mkv", "webm", "mpeg", "mpg", "3gp"}
+    file_category = "image" if ext in image_exts else "video" if ext in video_exts else "file"
     
     # Store file reference in DB
     file_doc = {

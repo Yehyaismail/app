@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, RotateCcw, Palette } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, RotateCcw, Palette, Upload, Trash2 } from 'lucide-react';
 import { useCustomize } from '../contexts/CustomizeContext';
 
 const AVATAR_COLORS = ['#059669', '#2563eb', '#7c3aed', '#dc2626', '#ea580c', '#ca8a04', '#0d9488', '#4f46e5', '#be185d', '#1e293b'];
@@ -25,6 +25,23 @@ const FONT_SIZES = [
 export const CustomizePanel = ({ isOpen, onClose }) => {
   const { settings, updateSetting, resetSettings } = useCustomize();
   const [tab, setTab] = useState('avatar');
+  const bgInputRef = useRef(null);
+
+  const handleBgImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      updateSetting('chatBgImage', ev.target.result);
+      updateSetting('chatBgColor', '');
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const removeBgImage = () => {
+    updateSetting('chatBgImage', '');
+  };
 
   if (!isOpen) return null;
 
@@ -88,7 +105,26 @@ export const CustomizePanel = ({ isOpen, onClose }) => {
           {tab === 'chat' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">خلفية المحادثة</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">صورة خلفية المحادثة</label>
+                <input type="file" ref={bgInputRef} accept="image/*" className="hidden" onChange={handleBgImageUpload} />
+                <div className="flex gap-2 items-center">
+                  <button onClick={() => bgInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm text-slate-700 dark:text-slate-300 transition-colors" data-testid="upload-bg-btn">
+                    <Upload className="w-4 h-4" /><span>اختيار صورة من المعرض</span>
+                  </button>
+                  {settings.chatBgImage && (
+                    <button onClick={removeBgImage} className="p-2.5 rounded-lg border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-500 transition-colors" data-testid="remove-bg-btn">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                {settings.chatBgImage && (
+                  <div className="mt-3 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 h-24">
+                    <img src={settings.chatBgImage} alt="bg" className="w-full h-full object-cover" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">أو اختر لون خلفية</label>
                 <div className="flex flex-wrap gap-2">
                   {CHAT_BG_COLORS.map((c, i) => (
                     <button key={i} onClick={() => updateSetting('chatBgColor', c)} className={`w-10 h-10 rounded-lg border-2 transition-transform hover:scale-110 ${settings.chatBgColor === c ? 'border-emerald-500 scale-110 ring-2 ring-emerald-200' : 'border-slate-200 dark:border-slate-600'}`} style={{ backgroundColor: c || '#f8fafc' }} data-testid={`chat-bg-${i}`}>
