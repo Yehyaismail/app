@@ -493,17 +493,14 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
                   isOwn
                     ? 'text-slate-900 dark:text-slate-100 rounded-lg rounded-tr-none'
                     : 'text-slate-900 dark:text-slate-100 rounded-lg rounded-tl-none border border-slate-100 dark:border-slate-700'
-                } p-3 shadow-sm`}
+                } p-3 shadow-sm ${!settings.sentBubbleColor && isOwn ? 'bg-emerald-100 dark:bg-emerald-900/40' : ''} ${!settings.receivedBubbleColor && !isOwn ? 'bg-white dark:bg-slate-800' : ''}`}
                 style={{
                   backgroundColor: isOwn
                     ? (settings.sentBubbleColor || undefined)
                     : (settings.receivedBubbleColor || undefined),
-                  ...(!isOwn && !settings.receivedBubbleColor ? {} : {}),
                 }}
                 onContextMenu={(e) => !msg.deleted && openContextMenu(e, msg)}
               >
-                {!settings.sentBubbleColor && isOwn && <div className="absolute inset-0 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg rounded-tr-none -z-10"></div>}
-                {!settings.receivedBubbleColor && !isOwn && <div className="absolute inset-0 bg-white dark:bg-slate-800 rounded-lg rounded-tl-none -z-10"></div>}
                 {/* Reply preview */}
                 {repliedMsg && (
                   <div className="mb-2 p-2 rounded-lg bg-slate-200/60 dark:bg-slate-700/60 border-r-2 border-emerald-500" data-testid="reply-preview">
