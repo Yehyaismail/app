@@ -75,7 +75,7 @@ export const Sidebar = ({ conversations, allUsers, selectedUserId, onSelectUser,
                     {user.online && <div className="absolute bottom-0 left-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full"></div>}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-slate-900 dark:text-slate-100 truncate">{user.name}</p>
+                    <p className="font-medium text-slate-900 dark:text-slate-100 truncate">{user.display_name || user.name}</p>
                     <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{user.online ? 'متصل' : 'غير متصل'}</p>
                   </div>
                 </div>
@@ -98,7 +98,7 @@ export const Sidebar = ({ conversations, allUsers, selectedUserId, onSelectUser,
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="font-medium text-slate-900 dark:text-slate-100 truncate">{conv.other_user.name}</p>
+                    <p className="font-medium text-slate-900 dark:text-slate-100 truncate">{conv.other_user.display_name || conv.other_user.name}</p>
                     <span className="text-xs text-slate-400 dark:text-slate-500">{formatTime(conv.last_message_time)}</span>
                   </div>
                   <div className="flex items-center justify-between">

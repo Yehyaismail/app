@@ -146,6 +146,12 @@ class TypingUpdate(BaseModel):
     receiver_id: str
     is_typing: bool
 
+class NicknameUpdate(BaseModel):
+    nickname: str
+
+class DeleteMode(BaseModel):
+    mode: str  # "for_me" or "for_all"
+
 # ===================== Admin Dependency =====================
 async def get_admin_user(request: Request) -> dict:
     user = await get_current_user(request)
@@ -351,7 +357,8 @@ async def get_messages(other_user_id: str, after: Optional[str] = None, current_
         "$or": [
             {"sender_id": current_user_oid, "receiver_id": other_user_oid},
             {"sender_id": other_user_oid, "receiver_id": current_user_oid}
-        ]
+        ],
+        "hidden_for": {"$nin": [current_user["id"]]}
     }
     
     # If 'after' param given, only fetch newer messages
@@ -425,13 +432,13 @@ async def edit_message(message_id: str, data: MessageEdit, current_user: dict = 
     return {"message": "Message edited", "id": message_id, "text": data.text, "edited": True}
 
 @api_router.delete("/messages/{message_id}")
-async def delete_message(message_id: str, current_user: dict = Depends(get_current_user)):
+async def delete_message_legacy(message_id: str, current_user: dict = Depends(get_current_user)):
+    """Legacy delete - defaults to delete for all"""
     msg = await db.messages.find_one({"_id": ObjectId(message_id)})
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
     if str(msg["sender_id"]) != current_user["id"]:
         raise HTTPException(status_code=403, detail="Can only delete your own messages")
-    
     await db.messages.update_one(
         {"_id": ObjectId(message_id)},
         {"$set": {"deleted": True, "text": "", "file_url": None, "file_name": None, "file_type": None, "message_type": "text"}}
@@ -473,6 +480,115 @@ async def clear_conversation(other_user_id: str, current_user: dict = Depends(ge
         ]
     })
     return {"message": "Conversation cleared", "deleted_count": result.deleted_count}
+
+# ===================== Nicknames =====================
+@api_router.put("/nicknames/{other_user_id}")
+async def set_nickname(other_user_id: str, data: NicknameUpdate, current_user: dict = Depends(get_current_user)):
+    await db.nicknames.update_one(
+        {"user_id": current_user["id"], "other_user_id": other_user_id},
+        {"$set": {"user_id": current_user["id"], "other_user_id": other_user_id, "nickname": data.nickname}},
+        upsert=True
+    )
+    return {"message": "Nickname updated", "nickname": data.nickname}
+
+@api_router.delete("/nicknames/{other_user_id}")
+async def remove_nickname(other_user_id: str, current_user: dict = Depends(get_current_user)):
+    await db.nicknames.delete_one({"user_id": current_user["id"], "other_user_id": other_user_id})
+    return {"message": "Nickname removed"}
+
+@api_router.get("/nicknames")
+async def get_nicknames(current_user: dict = Depends(get_current_user)):
+    cursor = db.nicknames.find({"user_id": current_user["id"]}, {"_id": 0, "other_user_id": 1, "nickname": 1})
+    result = {}
+    async for doc in cursor:
+        result[doc["other_user_id"]] = doc["nickname"]
+    return result
+
+# ===================== Delete for me / for all =====================
+@api_router.post("/messages/{message_id}/delete")
+async def delete_message_mode(message_id: str, data: DeleteMode, current_user: dict = Depends(get_current_user)):
+    msg = await db.messages.find_one({"_id": ObjectId(message_id)})
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    if data.mode == "for_me":
+        # Add current user to hidden_for list
+        hidden_for = msg.get("hidden_for", [])
+        if current_user["id"] not in hidden_for:
+            hidden_for.append(current_user["id"])
+        await db.messages.update_one({"_id": ObjectId(message_id)}, {"$set": {"hidden_for": hidden_for}})
+        return {"message": "Message hidden for you", "id": message_id}
+    
+    elif data.mode == "for_all":
+        if str(msg["sender_id"]) != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Can only delete your own messages for everyone")
+        await db.messages.update_one(
+            {"_id": ObjectId(message_id)},
+            {"$set": {"deleted": True, "text": "", "file_url": None, "file_name": None, "file_type": None, "message_type": "text"}}
+        )
+        return {"message": "Message deleted for everyone", "id": message_id}
+    
+    raise HTTPException(status_code=400, detail="Invalid mode")
+
+# ===================== Export Chat PDF =====================
+@api_router.get("/messages/{other_user_id}/export")
+async def export_chat(other_user_id: str, current_user: dict = Depends(get_current_user)):
+    current_user_oid = ObjectId(current_user["id"])
+    other_user_oid = ObjectId(other_user_id)
+    
+    other_user = await db.users.find_one({"_id": other_user_oid}, {"_id": 0, "name": 1})
+    other_name = other_user["name"] if other_user else "مستخدم"
+    
+    messages = await db.messages.find({
+        "$or": [
+            {"sender_id": current_user_oid, "receiver_id": other_user_oid},
+            {"sender_id": other_user_oid, "receiver_id": current_user_oid}
+        ],
+        "hidden_for": {"$nin": [current_user["id"]]},
+        "deleted": {"$ne": True}
+    }).sort("timestamp", 1).to_list(5000)
+    
+    # Build HTML for PDF
+    html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head><meta charset="utf-8"><style>
+body {{ font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; background: #f8fafc; direction: rtl; }}
+h1 {{ text-align: center; color: #0f172a; border-bottom: 2px solid #10b981; padding-bottom: 10px; }}
+.info {{ text-align: center; color: #64748b; font-size: 13px; margin-bottom: 20px; }}
+.msg {{ margin: 8px 0; padding: 10px 14px; border-radius: 12px; max-width: 80%; }}
+.sent {{ background: #d1fae5; margin-left: auto; margin-right: 0; text-align: right; }}
+.received {{ background: #ffffff; border: 1px solid #e2e8f0; margin-right: auto; margin-left: 0; text-align: right; }}
+.sender {{ font-weight: 600; font-size: 12px; color: #059669; margin-bottom: 2px; }}
+.text {{ font-size: 14px; color: #1e293b; white-space: pre-wrap; }}
+.time {{ font-size: 11px; color: #94a3b8; margin-top: 4px; }}
+.file {{ color: #3b82f6; font-size: 13px; }}
+</style></head>
+<body>
+<h1>محادثة مع {other_name}</h1>
+<p class="info">تصدير بتاريخ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}</p>
+"""
+    for msg in messages:
+        is_own = msg["sender_id"] == current_user_oid
+        cls = "sent" if is_own else "received"
+        sender = current_user.get("name", "أنا") if is_own else other_name
+        ts = msg["timestamp"].strftime("%Y-%m-%d %H:%M") if msg.get("timestamp") else ""
+        text = msg.get("text", "")
+        mt = msg.get("message_type", "text")
+        
+        if mt == "voice":
+            text = "رسالة صوتية"
+        elif mt == "image":
+            text = "صورة"
+        elif mt == "file":
+            text = f'ملف: {msg.get("file_name", "")}'
+        
+        html += f'<div class="msg {cls}"><div class="sender">{sender}</div><div class="text">{text}</div><div class="time">{ts}</div></div>\n'
+    
+    html += "</body></html>"
+    
+    return FastAPIResponse(content=html, media_type="text/html; charset=utf-8", headers={
+        "Content-Disposition": "attachment; filename=chat_export.html"
+    })
 
 # ===================== Conversation Routes =====================
 @api_router.get("/conversations")
@@ -682,7 +798,11 @@ logger = logging.getLogger(__name__)
 async def startup_event():
     await db.users.create_index("email", unique=True)
     await db.messages.create_index([("sender_id", 1), ("receiver_id", 1), ("timestamp", -1)])
+    await db.messages.create_index([("receiver_id", 1), ("status", 1)])
+    await db.messages.create_index("timestamp")
     await db.typing_status.create_index([("user_id", 1), ("receiver_id", 1)])
+    await db.nicknames.create_index([("user_id", 1), ("other_user_id", 1)], unique=True)
+    await db.files.create_index("storage_path")
     
     # Init storage
     try:

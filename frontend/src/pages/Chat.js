@@ -14,6 +14,7 @@ export const Chat = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
+  const [nicknames, setNicknames] = useState({});
   const prevConversationsRef = useRef([]);
   const notifIdRef = useRef(0);
 
@@ -97,31 +98,45 @@ export const Chat = () => {
 
   const loadData = async () => {
     try {
-      const [convRes, usersRes] = await Promise.all([
+      const [convRes, usersRes, nickRes] = await Promise.all([
         axios.get(`${API_URL}/api/conversations`, { withCredentials: true }),
-        axios.get(`${API_URL}/api/users`, { withCredentials: true })
+        axios.get(`${API_URL}/api/users`, { withCredentials: true }),
+        axios.get(`${API_URL}/api/nicknames`, { withCredentials: true })
       ]);
+
+      const nicks = nickRes.data || {};
+      setNicknames(nicks);
 
       const newConvs = convRes.data;
       const prevConvs = prevConversationsRef.current;
 
-      // Only notify for genuinely new unread messages
       if (prevConvs.length > 0) {
         newConvs.forEach((nc) => {
           const pc = prevConvs.find((p) => p.id === nc.id);
           if ((!pc && nc.unread_count > 0) || (pc && nc.unread_count > pc.unread_count)) {
+            const displayName = nicks[nc.other_user.id] || nc.other_user.name;
             playNotificationSound();
-            sendBrowserNotification(nc.other_user.name, nc.last_message || 'رسالة جديدة');
-            addInAppNotification(nc.other_user.name, nc.other_user.id, nc.last_message || 'رسالة جديدة');
+            sendBrowserNotification(displayName, nc.last_message || 'رسالة جديدة');
+            addInAppNotification(displayName, nc.other_user.id, nc.last_message || 'رسالة جديدة');
           }
         });
       }
 
+      // Apply nicknames to conversations and users
+      const convWithNicks = newConvs.map((c) => ({
+        ...c,
+        other_user: { ...c.other_user, display_name: nicks[c.other_user.id] || c.other_user.name }
+      }));
+      const usersWithNicks = usersRes.data.map((u) => ({
+        ...u,
+        display_name: nicks[u.id] || u.name
+      }));
+
       prevConversationsRef.current = newConvs;
-      setConversations(newConvs);
-      setAllUsers(usersRes.data);
+      setConversations(convWithNicks);
+      setAllUsers(usersWithNicks);
     } catch (error) {
-      // Silent fail on network issues
+      // Silent fail
     } finally {
       setLoading(false);
     }
@@ -130,7 +145,10 @@ export const Chat = () => {
   const handleUserSelect = (userId) => {
     const fromConv = conversations.find((c) => c.other_user.id === userId);
     const fromAll = allUsers.find((u) => u.id === userId);
-    setSelectedUser(fromConv ? fromConv.other_user : fromAll);
+    const selected = fromConv ? fromConv.other_user : fromAll;
+    if (selected) {
+      setSelectedUser({ ...selected, display_name: selected.display_name || selected.name });
+    }
   };
 
   const handleBack = () => setSelectedUser(null);

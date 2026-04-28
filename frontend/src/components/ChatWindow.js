@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Button } from './ui/button';
-import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square, ArrowRight, Reply, Pencil, Trash2, X, CornerDownLeft, Smile, Eraser } from 'lucide-react';
+import { Send, Paperclip, Image, FileText, Download, Check, CheckCheck, Mic, Square, ArrowRight, Reply, Pencil, Trash2, X, CornerDownLeft, Smile, Eraser, FileDown, UserPen } from 'lucide-react';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { VoicePlayer } from './VoicePlayer';
@@ -98,6 +98,9 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   const messagesContainerRef = useRef(null);
   const isUserScrolledUpRef = useRef(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [deleteMenuMsg, setDeleteMenuMsg] = useState(null);
+  const [showNicknameDialog, setShowNicknameDialog] = useState(false);
+  const [nicknameInput, setNicknameInput] = useState('');
 
   const isFirstLoadRef = useRef(true);
 
@@ -264,12 +267,31 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
     finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; if (imageInputRef.current) imageInputRef.current.value = ''; }
   };
 
-  const handleDeleteMessage = async (msgId) => {
+  const handleDeleteMessage = async (msgId, mode = 'for_all') => {
     try {
-      await axios.delete(`${API_URL}/api/messages/${msgId}`, { withCredentials: true });
+      await axios.post(`${API_URL}/api/messages/${msgId}/delete`, { mode }, { withCredentials: true });
       await loadMessages(); onNewMessage();
     } catch (e) { console.error(e); }
     setContextMenu(null);
+    setDeleteMenuMsg(null);
+  };
+
+  const handleExportChat = () => {
+    if (!selectedUser) return;
+    window.open(`${API_URL}/api/messages/${selectedUser.id}/export`, '_blank');
+  };
+
+  const handleSetNickname = async () => {
+    if (!selectedUser) return;
+    try {
+      if (nicknameInput.trim()) {
+        await axios.put(`${API_URL}/api/nicknames/${selectedUser.id}`, { nickname: nicknameInput.trim() }, { withCredentials: true });
+      } else {
+        await axios.delete(`${API_URL}/api/nicknames/${selectedUser.id}`, { withCredentials: true });
+      }
+      onNewMessage(); // Refresh to get updated nicknames
+    } catch (e) { console.error(e); }
+    setShowNicknameDialog(false);
   };
 
   const handleEditMessage = (msg) => {
@@ -395,17 +417,23 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
             <ArrowRight className="w-5 h-5 text-slate-600 dark:text-slate-400" />
           </button>
           <div className="relative">
-            <Avatar className="w-10 h-10 bg-emerald-600"><AvatarFallback className="text-white font-medium">{getInitials(selectedUser.name)}</AvatarFallback></Avatar>
+            <Avatar className="w-10 h-10 bg-emerald-600"><AvatarFallback className="text-white font-medium">{getInitials(selectedUser.display_name || selectedUser.name)}</AvatarFallback></Avatar>
             {selectedUser.online && <div className="absolute bottom-0 left-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full"></div>}
           </div>
           <div className="flex-1">
-            <p className="font-medium text-slate-900 dark:text-slate-100">{selectedUser.name}</p>
+            <p className="font-medium text-slate-900 dark:text-slate-100">{selectedUser.display_name || selectedUser.name}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {isOtherTyping ? <span className="text-emerald-600 dark:text-emerald-400 font-medium" data-testid="typing-indicator">يكتب الآن...</span> : (selectedUser.online ? 'متصل' : 'غير متصل')}
             </p>
           </div>
           <button onClick={() => setShowClearConfirm(true)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors" title="مسح المحادثة" data-testid="clear-chat-btn">
             <Eraser className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+          </button>
+          <button onClick={handleExportChat} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors" title="تصدير المحادثة" data-testid="export-chat-btn">
+            <FileDown className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+          </button>
+          <button onClick={() => { setNicknameInput(''); setShowNicknameDialog(true); }} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors" title="تغيير الاسم" data-testid="nickname-btn">
+            <UserPen className="w-5 h-5 text-slate-500 dark:text-slate-400" />
           </button>
         </div>
       </div>
@@ -505,7 +533,18 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
                       </button>
                     )}
                     {isOwn && (
-                      <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 bg-white dark:bg-slate-700 rounded-md shadow-sm hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" data-testid="delete-msg-btn">
+                      <button onClick={() => setDeleteMenuMsg(deleteMenuMsg === msg.id ? null : msg.id)} className="p-1.5 bg-white dark:bg-slate-700 rounded-md shadow-sm hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors relative" data-testid="delete-msg-btn">
+                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                        {deleteMenuMsg === msg.id && (
+                          <div className="absolute top-8 left-0 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 py-1 z-30 w-36" onClick={(e) => e.stopPropagation()}>
+                            <button onClick={() => handleDeleteMessage(msg.id, 'for_me')} className="w-full px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 text-right" data-testid="delete-for-me-btn">حذف لدي فقط</button>
+                            <button onClick={() => handleDeleteMessage(msg.id, 'for_all')} className="w-full px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 text-right" data-testid="delete-for-all-btn">حذف للجميع</button>
+                          </div>
+                        )}
+                      </button>
+                    )}
+                    {!isOwn && (
+                      <button onClick={() => handleDeleteMessage(msg.id, 'for_me')} className="p-1.5 bg-white dark:bg-slate-700 rounded-md shadow-sm hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" data-testid="delete-for-me-other-btn">
                         <Trash2 className="w-3.5 h-3.5 text-red-400" />
                       </button>
                     )}
@@ -527,6 +566,28 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
             <div className="flex gap-3 justify-end">
               <button onClick={() => setShowClearConfirm(false)} className="px-4 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" data-testid="cancel-clear-btn">إلغاء</button>
               <button onClick={handleClearChat} className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors" data-testid="confirm-clear-btn">مسح الكل</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Nickname Dialog */}
+      {showNicknameDialog && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setShowNicknameDialog(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-6 max-w-sm mx-4 w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">تغيير اسم العرض</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">هذا الاسم يظهر لك فقط ولا يراه الطرف الآخر</p>
+            <input
+              type="text"
+              value={nicknameInput}
+              onChange={(e) => setNicknameInput(e.target.value)}
+              placeholder={selectedUser?.name || 'الاسم الجديد...'}
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-4"
+              data-testid="nickname-input"
+            />
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setShowNicknameDialog(false)} className="px-4 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">إلغاء</button>
+              <button onClick={handleSetNickname} className="px-4 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors" data-testid="save-nickname-btn">حفظ</button>
             </div>
           </div>
         </div>
@@ -556,10 +617,13 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
             </button>
           )}
           {contextMenu.msg.sender_id === currentUser?.id && (
-            <button onClick={() => handleDeleteMessage(contextMenu.msg.id)} className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-sm text-red-600 text-right" data-testid="ctx-delete-btn">
-              <Trash2 className="w-4 h-4" /><span>حذف</span>
+            <button onClick={() => handleDeleteMessage(contextMenu.msg.id, 'for_all')} className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-sm text-red-600 text-right" data-testid="ctx-delete-btn">
+              <Trash2 className="w-4 h-4" /><span>حذف للجميع</span>
             </button>
           )}
+          <button onClick={() => handleDeleteMessage(contextMenu.msg.id, 'for_me')} className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm text-slate-700 dark:text-slate-200 text-right" data-testid="ctx-delete-for-me-btn">
+            <Trash2 className="w-4 h-4" /><span>حذف لدي</span>
+          </button>
         </div>
       )}
 
@@ -637,7 +701,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
                 </div>
               )}
             </div>
-            <textarea ref={inputRef} value={newMessage} onChange={handleInputChange} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }} placeholder={editingMsg ? 'عدّل الرسالة...' : 'اكتب رسالتك...'} className="flex-1 resize-none min-h-[44px] max-h-[120px] py-2.5 px-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base leading-relaxed" disabled={loading || uploading} rows={1} data-testid="chat-message-input" />
+            <textarea ref={inputRef} value={newMessage} onChange={handleInputChange} placeholder={editingMsg ? 'عدّل الرسالة...' : 'اكتب رسالتك...'} className="flex-1 resize-none min-h-[44px] max-h-[120px] py-2.5 px-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-base leading-relaxed" disabled={loading || uploading} rows={1} data-testid="chat-message-input" />
             {newMessage.trim() ? (
               <Button type="submit" disabled={loading || uploading} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-6 rounded-xl transition-colors" data-testid="chat-send-btn"><Send className="w-5 h-5" /></Button>
             ) : !editingMsg ? (
