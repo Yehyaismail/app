@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { VoicePlayer } from './VoicePlayer';
 import EmojiPicker from 'emoji-picker-react';
+import { useCustomize } from '../contexts/CustomizeContext';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -73,6 +74,7 @@ const FilePreview = ({ msg }) => {
 };
 
 export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) => {
+  const { settings } = useCustomize();
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -399,6 +401,9 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
 
   const getReplyMessage = (replyId) => messages.find((m) => m.id === replyId);
 
+  const fontSizeClass = { sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-xl' }[settings.fontSize] || 'text-base';
+  const chatStyle = { fontFamily: settings.fontFamily || undefined, backgroundColor: settings.chatBgColor || undefined };
+
   if (!selectedUser) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900">
@@ -409,7 +414,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   }
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-900">
+    <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-900" style={chatStyle}>
       {/* Header */}
       <div className="p-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
         <div className="flex items-center gap-3">
@@ -448,11 +453,19 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
               <div
                 className={`max-w-[70%] relative ${
                   isOwn
-                    ? 'bg-emerald-100 dark:bg-emerald-900/40 text-slate-900 dark:text-slate-100 rounded-lg rounded-tr-none'
-                    : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg rounded-tl-none border border-slate-100 dark:border-slate-700'
+                    ? 'text-slate-900 dark:text-slate-100 rounded-lg rounded-tr-none'
+                    : 'text-slate-900 dark:text-slate-100 rounded-lg rounded-tl-none border border-slate-100 dark:border-slate-700'
                 } p-3 shadow-sm`}
+                style={{
+                  backgroundColor: isOwn
+                    ? (settings.sentBubbleColor || undefined)
+                    : (settings.receivedBubbleColor || undefined),
+                  ...(!isOwn && !settings.receivedBubbleColor ? {} : {}),
+                }}
                 onContextMenu={(e) => !msg.deleted && openContextMenu(e, msg)}
               >
+                {!settings.sentBubbleColor && isOwn && <div className="absolute inset-0 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg rounded-tr-none -z-10"></div>}
+                {!settings.receivedBubbleColor && !isOwn && <div className="absolute inset-0 bg-white dark:bg-slate-800 rounded-lg rounded-tl-none -z-10"></div>}
                 {/* Reply preview */}
                 {repliedMsg && (
                   <div className="mb-2 p-2 rounded-lg bg-slate-200/60 dark:bg-slate-700/60 border-r-2 border-emerald-500" data-testid="reply-preview">
@@ -470,7 +483,7 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
                 ) : (
                   <>
                     <FilePreview msg={msg} />
-                    {msg.message_type === 'text' && <p className="text-base leading-relaxed whitespace-pre-wrap">{msg.text}</p>}
+                    {msg.message_type === 'text' && <p className={`${fontSizeClass} leading-relaxed whitespace-pre-wrap`}>{msg.text}</p>}
                   </>
                 )}
                 <div className="flex items-center justify-between gap-2 mt-1">
