@@ -828,18 +828,12 @@ async def startup_event():
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
         logger.info("Admin password updated")
     
-    with open("/app/memory/test_credentials.md", "w") as f:
-        f.write("# Test Credentials\n\n")
-        f.write("## Admin Account\n")
-        f.write(f"- Email: {admin_email}\n")
-        f.write(f"- Password: {admin_password}\n")
-        f.write(f"- Role: admin\n\n")
-        f.write("## Auth Endpoints\n")
-        f.write("- POST /api/auth/register\n- POST /api/auth/login\n- GET /api/auth/me\n- POST /api/auth/logout\n\n")
-        f.write("## Message Endpoints\n")
-        f.write("- POST /api/messages\n- GET /api/messages/{other_user_id}\n- GET /api/conversations\n\n")
-        f.write("## File Endpoints\n")
-        f.write("- POST /api/upload\n- GET /api/files/{path}\n")
+    try:
+        os.makedirs("/app/memory", exist_ok=True)
+        with open("/app/memory/test_credentials.md", "w") as f:
+            f.write("# Test Credentials\n")
+    except Exception as e:
+        logger.error(f"Failed to write test_credentials.md: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
