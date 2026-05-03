@@ -24,6 +24,14 @@ db = client[os.environ['DB_NAME']]
 # Create the main app
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
+# ===================== CORS =====================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # يمكنك لاحقًا وضع رابط Vercel فقط
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # JWT Configuration
 JWT_ALGORITHM = "HS256"
