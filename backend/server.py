@@ -27,11 +27,12 @@ api_router = APIRouter(prefix="/api")
 # ===================== CORS =====================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # يمكنك لاحقًا وضع رابط Vercel فقط
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # JWT Configuration
 JWT_ALGORITHM = "HS256"
