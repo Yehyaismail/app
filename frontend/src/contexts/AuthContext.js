@@ -16,7 +16,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const refreshIntervalRef = useRef(null);
 
-  const API_URL = process.env.REACT_APP_BACKEND_URL;
+  
+const API_URL = process.env.REACT_APP_API_URL;
 
   useEffect(() => {
     checkAuth();
