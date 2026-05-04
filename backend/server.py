@@ -816,11 +816,11 @@ async def startup_event():
     await db.files.create_index("storage_path")
     
     # Init storage
-    try:
-        init_storage()
-        logger.info("Object storage initialized successfully")
-    except Exception as e:
-        logger.error(f"Storage init failed: {e}")
+ #   try:
+    #    init_storage()
+      #  logger.info("Object storage initialized successfully")
+   # except Exception as e:
+    #    logger.error(f"Storage init failed: {e}")
     
     # Seed admin user
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com")
@@ -833,13 +833,13 @@ async def startup_event():
             "avatar": None, "online": False, "role": "admin",
             "created_at": datetime.now(timezone.utc)
         })
-        logger.info(f"Admin user created: {admin_email}")
-    elif not verify_password(admin_password, existing["password_hash"]):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
-        logger.info("Admin password updated")
+       # logger.info(f"Admin user created: {admin_email}")
+  #  elif not verify_password(admin_password, existing["password_hash"]):
+      #  await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
+      #  logger.info("Admin password updated")
     
-    try:
-        os.makedirs("/app/memory", exist_ok=True)
+ #   try:
+       # os.makedirs("/app/memory", exist_ok=True)
         with open("/app/memory/test_credentials.md", "w") as f:
             f.write("# Test Credentials\n")
     except Exception as e:
