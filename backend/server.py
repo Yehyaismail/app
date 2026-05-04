@@ -842,10 +842,10 @@ async def startup_event():
     
  #   try:
        # os.makedirs("/app/memory", exist_ok=True)
-        with open("/app/memory/test_credentials.md", "w") as f:
-            f.write("# Test Credentials\n")
-    except Exception as e:
-        logger.error(f"Failed to write test_credentials.md: {e}")
+    #  #  with open("/app/memory/test_credentials.md", "w") as f:
+           # f.write("# Test Credentials\n")
+   # except Exception as e:
+        #logger.error(f"Failed to write test_credentials.md: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
