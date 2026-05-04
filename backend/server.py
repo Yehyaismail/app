@@ -282,7 +282,9 @@ async def upload_file(file: UploadFile = File(...), current_user: dict = Depends
     
     data = await file.read()
     content_type = file.content_type or "application/octet-stream"
-   result = {"path": f"disabled_storage/{file_id}.{ext}", "size": len(data)}
+  
+    result = {"path": f"disabled_storage/{file_id}.{ext}", "size": len(data)}
+
  
 
     
