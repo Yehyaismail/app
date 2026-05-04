@@ -17,9 +17,24 @@ import uuid
 import requests as http_requests
 
 # MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+#mongo_url = os.environ['MONGO_URL']
+#client = AsyncIOMotorClient(mongo_url)
+#db = client[os.environ['DB_NAME']]
+# ===================== DIRECT CONFIG (TEMPORARY) =====================
+
+MONGO_URL = "mongodb+srv://yehya776471541_db_user:VwgbTBGtfW2jPEqS@cluster0.knm4wms.mongodb.net/?appName=Cluster0"
+DB_NAME = "chatapp"
+JWT_SECRET = "mysupersecretkey123"
+
+ADMIN_EMAIL = "admin@example.com"
+ADMIN_PASSWORD = "admin123"
+
+# =====================================================================
+
+from motor.motor_asyncio import AsyncIOMotorClient
+
+client = AsyncIOMotorAsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
 
 # Create the main app
 app = FastAPI()
