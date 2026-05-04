@@ -33,7 +33,8 @@ ADMIN_PASSWORD = "admin123"
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-client = AsyncIOMotorAsyncIOMotorClient(MONGO_URL)
+client = AsyncIOMotorClient(MONGO_URL)
+
 db = client[DB_NAME]
 
 # Create the main app
