@@ -282,8 +282,9 @@ async def upload_file(file: UploadFile = File(...), current_user: dict = Depends
     
     data = await file.read()
     content_type = file.content_type or "application/octet-stream"
-    
-    result = put_object(path, data, content_type)
+   result = {"path": f"disabled_storage/{file_id}.{ext}", "size": len(data)}
+ 
+
     
     # Determine file category
     image_exts = {"jpg", "jpeg", "png", "gif", "webp"}
