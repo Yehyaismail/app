@@ -9,12 +9,14 @@ const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export const Chat = () => {
   const { user } = useAuth();
+
   const [conversations, setConversations] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
   const [nicknames, setNicknames] = useState({});
+
   const prevConversationsRef = useRef([]);
   const notifIdRef = useRef(0);
 
@@ -25,6 +27,7 @@ export const Chat = () => {
     }
   }, []);
 
+  // Load data every 5 seconds
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 5000);
@@ -33,16 +36,23 @@ export const Chat = () => {
 
   // Update page title with unread count
   useEffect(() => {
-    const totalUnread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
-    document.title = totalUnread > 0 ? `(${totalUnread}) محادثات` : 'محادثات';
+    const totalUnread = conversations.reduce(
+      (sum, c) => sum + (c.unread_count || 0),
+      0
+    );
+
+    document.title =
+      totalUnread > 0
+        ? `(${totalUnread}) محادثات جديدة`
+        : 'المحادثات';
   }, [conversations]);
 
+  // Play notification sound
   const playNotificationSound = useCallback(() => {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const now = ctx.currentTime;
 
-      // WhatsApp-like double tone
       const playTone = (freq, start, dur) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -62,8 +72,13 @@ export const Chat = () => {
     } catch (e) {}
   }, []);
 
+  // Browser notification
   const sendBrowserNotification = useCallback((senderName, message) => {
-    if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+    if (
+      'Notification' in window &&
+      Notification.permission === 'granted' &&
+      document.hidden
+    ) {
       try {
         const n = new Notification(senderName, {
           body: message,
@@ -71,31 +86,54 @@ export const Chat = () => {
           tag: `chat-${Date.now()}`,
           silent: true
         });
-        n.onclick = () => { window.focus(); n.close(); };
+
+        n.onclick = () => {
+          window.focus();
+          n.close();
+        };
+
         setTimeout(() => n.close(), 5000);
       } catch (e) {}
     }
   }, []);
 
-  const addInAppNotification = useCallback((senderName, senderId, message) => {
-    const id = ++notifIdRef.current;
-    const initial = senderName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
-    setNotifications((prev) => [...prev.slice(-4), { id, senderName, senderId, message, senderInitial: initial }]);
-    // Auto dismiss after 4 seconds
-    setTimeout(() => {
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-    }, 4000);
-  }, []);
+  // In-app notification
+  const addInAppNotification = useCallback(
+    (senderName, senderId, message) => {
+      const id = ++notifIdRef.current;
+
+      const initial = senderName
+        .split(' ')
+        .map((w) => w[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+
+      setNotifications((prev) => [
+        ...prev.slice(-4),
+        { id, senderName, senderId, message, senderInitial: initial }
+      ]);
+
+      setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== id));
+      }, 4000);
+    },
+    []
+  );
 
   const dismissNotification = useCallback((id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
-  const handleNotificationClick = useCallback((notif) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
-    handleUserSelect(notif.senderId);
-  }, [conversations, allUsers]);
+  const handleNotificationClick = useCallback(
+    (notif) => {
+      setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+      handleUserSelect(notif.senderId);
+    },
+    [conversations, allUsers]
+  );
 
+  // Load conversations + users + nicknames
   const loadData = async () => {
     try {
       const [convRes, usersRes, nickRes] = await Promise.all([
@@ -110,23 +148,41 @@ export const Chat = () => {
       const newConvs = convRes.data;
       const prevConvs = prevConversationsRef.current;
 
+      // Detect new unread messages
       if (prevConvs.length > 0) {
         newConvs.forEach((nc) => {
           const pc = prevConvs.find((p) => p.id === nc.id);
-          if ((!pc && nc.unread_count > 0) || (pc && nc.unread_count > pc.unread_count)) {
-            const displayName = nicks[nc.other_user.id] || nc.other_user.name;
+
+          if (
+            (!pc && nc.unread_count > 0) ||
+            (pc && nc.unread_count > pc.unread_count)
+          ) {
+            const displayName =
+              nicks[nc.other_user.id] || nc.other_user.name;
+
             playNotificationSound();
-            sendBrowserNotification(displayName, nc.last_message || 'رسالة جديدة');
-            addInAppNotification(displayName, nc.other_user.id, nc.last_message || 'رسالة جديدة');
+            sendBrowserNotification(
+              displayName,
+              nc.last_message || 'رسالة جديدة'
+            );
+            addInAppNotification(
+              displayName,
+              nc.other_user.id,
+              nc.last_message || 'رسالة جديدة'
+            );
           }
         });
       }
 
-      // Apply nicknames to conversations and users
+      // Apply nicknames
       const convWithNicks = newConvs.map((c) => ({
         ...c,
-        other_user: { ...c.other_user, display_name: nicks[c.other_user.id] || c.other_user.name }
+        other_user: {
+          ...c.other_user,
+          display_name: nicks[c.other_user.id] || c.other_user.name
+        }
       }));
+
       const usersWithNicks = usersRes.data.map((u) => ({
         ...u,
         display_name: nicks[u.id] || u.name
@@ -136,18 +192,25 @@ export const Chat = () => {
       setConversations(convWithNicks);
       setAllUsers(usersWithNicks);
     } catch (error) {
-      // Silent fail
+      // silent fail
     } finally {
       setLoading(false);
     }
   };
 
   const handleUserSelect = (userId) => {
-    const fromConv = conversations.find((c) => c.other_user.id === userId);
+    const fromConv = conversations.find(
+      (c) => c.other_user.id === userId
+    );
     const fromAll = allUsers.find((u) => u.id === userId);
+
     const selected = fromConv ? fromConv.other_user : fromAll;
+
     if (selected) {
-      setSelectedUser({ ...selected, display_name: selected.display_name || selected.name });
+      setSelectedUser({
+        ...selected,
+        display_name: selected.display_name || selected.name
+      });
     }
   };
 
@@ -155,13 +218,22 @@ export const Chat = () => {
   const handleNewMessage = () => loadData();
 
   return (
-    <div className="h-screen bg-slate-50 dark:bg-slate-900 grid grid-cols-12 relative" data-testid="chat-page">
+    <div
+      className="h-screen bg-slate-50 dark:bg-slate-900 grid grid-cols-12 relative"
+      data-testid="chat-page"
+    >
       <NotificationToast
         notifications={notifications}
         onDismiss={dismissNotification}
         onClickNotification={handleNotificationClick}
       />
-      <div className={`col-span-12 md:col-span-4 lg:col-span-3 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 ${selectedUser ? 'hidden md:block' : ''}`}>
+
+      {/* Sidebar */}
+      <div
+        className={`col-span-12 md:col-span-4 lg:col-span-3 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 ${
+          selectedUser ? 'hidden md:block' : ''
+        }`}
+      >
         <Sidebar
           conversations={conversations}
           allUsers={allUsers}
@@ -170,7 +242,13 @@ export const Chat = () => {
           currentUser={user}
         />
       </div>
-      <div className={`col-span-12 md:col-span-8 lg:col-span-9 ${!selectedUser ? 'hidden md:block' : ''}`}>
+
+      {/* Chat Window */}
+      <div
+        className={`col-span-12 md:col-span-8 lg:col-span-9 ${
+          !selectedUser ? 'hidden md:block' : ''
+        }`}
+      >
         <ChatWindow
           selectedUser={selectedUser}
           currentUser={user}
