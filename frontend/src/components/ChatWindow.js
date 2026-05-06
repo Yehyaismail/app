@@ -1541,17 +1541,18 @@ why do                 {/* =========================
                     </span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-                    className="flex items-center gap-3 w-full p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors text-right"
-                    data-testid="attach-file-btn"
-                  >
-                    <FileText className="w-5 h-5 text-blue-600" />
-                    <span className="text-sm text-slate-700 dark:text-slate-200">
-                      ملف
-                    </span>
-                  </button>
+        <button
+  type="button"
+  onClick={() => fileInputRef.current?.click()}
+  className="flex items-center gap-3 w-full p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors text-right"
+  data-testid="attach-file-btn"
+>
+  <FileText className="w-5 h-5 text-blue-600" />
+  <span className="text-sm text-slate-700 dark:text-slate-200">
+    ملف
+  </span>
+</button>
+
                 </div>
               )}
             </div>
