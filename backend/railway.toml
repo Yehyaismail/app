@@ -1,6 +1,3 @@
-[build]
-builder = "python"
-
 [start]
 cmd = "python server.py"
 
