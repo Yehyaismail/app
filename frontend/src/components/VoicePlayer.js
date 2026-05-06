@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Play, Pause } from 'lucide-react';
 
@@ -11,61 +11,77 @@ export const VoicePlayer = ({ fileUrl, duration }) => {
   const [totalDuration, setTotalDuration] = useState(duration || 0);
   const [blobUrl, setBlobUrl] = useState(null);
   const [loading, setLoading] = useState(false);
+
   const audioRef = useRef(null);
   const animRef = useRef(null);
 
-  useEffect(() => {
-    if (fileUrl) loadAudio();
-    return () => {
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-      if (animRef.current) cancelAnimationFrame(animRef.current);
-    };
-  }, [fileUrl]);
-
-  const loadAudio = async () => {
+  // Load audio file
+  const loadAudio = useCallback(async () => {
     try {
       setLoading(true);
+
       const response = await axios.get(`${API_URL}/api/files/${fileUrl}`, {
         withCredentials: true,
         responseType: 'blob'
       });
+
       const url = URL.createObjectURL(response.data);
       setBlobUrl(url);
+
       const audio = new Audio(url);
+
       audio.addEventListener('loadedmetadata', () => {
         if (audio.duration && isFinite(audio.duration)) {
           setTotalDuration(audio.duration);
         }
       });
+
       audio.addEventListener('ended', () => {
         setIsPlaying(false);
         setProgress(0);
         setCurrentTime(0);
       });
+
       audioRef.current = audio;
+
     } catch (err) {
       console.error('Error loading audio:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [fileUrl]);
 
+  // Handle audio loading + cleanup
+  useEffect(() => {
+    if (fileUrl) loadAudio();
+
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, [fileUrl, loadAudio, blobUrl]);
+
+  // Update progress animation
   const updateProgress = () => {
     if (audioRef.current) {
       const current = audioRef.current.currentTime;
       const dur = audioRef.current.duration;
+
       if (dur && isFinite(dur)) {
         setProgress((current / dur) * 100);
         setCurrentTime(current);
       }
     }
+
     if (isPlaying) {
       animRef.current = requestAnimationFrame(updateProgress);
     }
   };
 
+  // Play / Pause
   const togglePlay = () => {
     if (!audioRef.current) return;
+
     if (isPlaying) {
       audioRef.current.pause();
       if (animRef.current) cancelAnimationFrame(animRef.current);
@@ -73,20 +89,24 @@ export const VoicePlayer = ({ fileUrl, duration }) => {
       audioRef.current.play();
       animRef.current = requestAnimationFrame(updateProgress);
     }
+
     setIsPlaying(!isPlaying);
   };
 
+  // Seek on progress bar click
   const handleProgressClick = (e) => {
     if (!audioRef.current || !audioRef.current.duration) return;
+
     const rect = e.currentTarget.getBoundingClientRect();
-    // RTL: calculate from right
-    const clickX = rect.right - e.clientX;
+    const clickX = rect.right - e.clientX; // RTL support
     const pct = Math.max(0, Math.min(1, clickX / rect.width));
+
     audioRef.current.currentTime = pct * audioRef.current.duration;
     setProgress(pct * 100);
     setCurrentTime(audioRef.current.currentTime);
   };
 
+  // Format duration
   const formatDur = (secs) => {
     if (!secs || !isFinite(secs)) return '0:00';
     const m = Math.floor(secs / 60);
@@ -111,6 +131,7 @@ export const VoicePlayer = ({ fileUrl, duration }) => {
       >
         {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
       </button>
+
       <div className="flex-1">
         <div
           className="h-2 bg-slate-200 dark:bg-slate-600 rounded-full cursor-pointer relative overflow-hidden"
@@ -122,6 +143,7 @@ export const VoicePlayer = ({ fileUrl, duration }) => {
             style={{ width: `${progress}%` }}
           ></div>
         </div>
+
         <div className="flex justify-between mt-1">
           <span className="text-[10px] text-slate-400">{formatDur(currentTime)}</span>
           <span className="text-[10px] text-slate-400">{formatDur(totalDuration)}</span>
