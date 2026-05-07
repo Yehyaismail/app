@@ -39,6 +39,7 @@ export const AdminPanel = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(null);
+// eslint-disable-next-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadData();
