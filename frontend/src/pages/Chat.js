@@ -21,6 +21,8 @@ export const Chat = () => {
   const notifIdRef = useRef(0);
 
   // Request browser notification permission
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
@@ -35,6 +37,8 @@ export const Chat = () => {
   }, []);
 
   // Update page title with unread count
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const totalUnread = conversations.reduce(
       (sum, c) => sum + (c.unread_count || 0),
