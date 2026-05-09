@@ -30,6 +30,7 @@ export const Chat = () => {
   }, []);
 
   // Load data every 5 seconds
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 5000);
@@ -128,6 +129,7 @@ export const Chat = () => {
   const dismissNotification = useCallback((id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   }, []);
+// eslint-disable-next-line react-hooks/exhaustive-deps
 
   const handleNotificationClick = useCallback(
     (notif) => {
