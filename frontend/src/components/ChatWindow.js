@@ -34,7 +34,6 @@ const FilePreview = ({ msg, onOpenMedia }) => {
   const [blobUrl, setBlobUrl] = useState(null);
   const [loadingFile, setLoadingFile] = useState(false);
 // eslint-disable-next-line react-hooks/exhaustive-deps
-
   useEffect(() => {
     if ((msg.message_type === 'image' || msg.message_type === 'video') && msg.file_url) {
       loadMedia();
@@ -223,7 +222,6 @@ export const ChatWindow = ({ selectedUser, currentUser, onNewMessage, onBack }) 
   // Load Messages on User Change
   // =========================
   // eslint-disable-next-line react-hooks/exhaustive-deps
-
   useEffect(() => {
     if (selectedUser) {
       isFirstLoadRef.current = true;
