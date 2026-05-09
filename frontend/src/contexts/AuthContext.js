@@ -19,8 +19,7 @@ export const AuthProvider = ({ children }) => {
   
 const API_URL = process.env.REACT_APP_API_URL;
 // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
+ useEffect(() => {
     checkAuth();
     return () => {
       if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
