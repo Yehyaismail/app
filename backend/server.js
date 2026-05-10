@@ -1,12 +1,5 @@
 // server.js
 
-// ===================== تحميل المتغيرات من ملف .env =====================
-// هنا نستخدم dotenv لقراءة MONGO_URL, DB_NAME, JWT_SECRET, EMERGENT_LLM_KEY من ملف .env
-// server.js
-
-// ==================== تحميل المتغيرات من ملف .env ====================
-// server.js
-
 // ================= تحميل المتغيرات من ملف .env =================
 require('dotenv').config();
 
@@ -18,9 +11,13 @@ const { MongoClient, ObjectId } = require('mongodb');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
+const multer = require('multer');
+const upload = multer();
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
-
-// ===================== إعداد تطبيق Express =====================
+// ================= إعداد تطبيق Express =================
 const app = express();
 
 // تفعيل قراءة JSON من الطلبات
@@ -29,64 +26,37 @@ app.use(express.json());
 // تفعيل قراءة الكوكيز
 app.use(cookieParser());
 
-// ===================== إعداد CORS =====================
-// هنا نضبط نفس الـ origins التي كانت في FastAPI
+// ================= إعداد CORS =================
 app.use(
   cors({
     origin: [
       'https://app-three-inky-35.vercel.app',
       'http://localhost:3000',
+      process.env.FRONTEND_URL || 'http://localhost:3000',
     ],
-    credentials: true, // السماح بإرسال الكوكيز
+    credentials: true,
   })
 );
 
-// ===================== إعداد الاتصال بقاعدة البيانات =====================
-// ملاحظة: في FastAPI كنت تستخدم قيم ثابتة، هنا الأفضل نستخدم .env
-// مثال ملف .env:
-// MONGO_URL=mongodb+srv://....
-// DB_NAME=chatapp
-// JWT_SECRET=mysupersecretkey123
-// EMERGENT_LLM_KEY=...
-
+// ================= إعداد الاتصال بقاعدة البيانات =================
 const MONGO_URL = process.env.MONGO_URL;
 const DB_NAME = process.env.DB_NAME;
 const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key-change-in-production';
 
-// متغيرات خاصة بحساب الأدمن (يمكن لاحقًا نقلها إلى .env)
+// متغيرات خاصة بحساب الأدمن
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
-// إنشاء عميل MongoDB
 let db;
 
-// دالة للاتصال بقاعدة البيانات
-async function connectToDatabase() {
-  // تعليق: هنا نقوم بالاتصال بقاعدة بيانات MongoDB باستخدام MongoClient
-  const client = new MongoClient(MONGO_URL);
-  await client.connect();
-  db = client.db(DB_NAME);
-  console.log('✅ Connected to MongoDB:', DB_NAME);
-}
-
-// استدعاء الاتصال عند تشغيل السيرفر
-connectToDatabase().catch((err) => {
-  console.error('❌ Error connecting to MongoDB:', err);
-  process.exit(1);
-});
-
-// ===================== إعداد التخزين مع Emergent =====================
-// هذه هي نفس الفكرة الموجودة في server.py لكن بلغة Node.js
-
+// ================= إعداد التخزين مع Emergent =================
 const STORAGE_URL = 'https://integrations.emergentagent.com/objstore/api/v1/storage';
 const EMERGENT_KEY = process.env.EMERGENT_LLM_KEY;
 const APP_NAME = 'chatapp';
 
 let storageKey = null;
 
-// دالة تهيئة التخزين والحصول على storage_key
 async function initStorage() {
-  // تعليق: هذه الدالة تستدعي API خارجي للحصول على storage_key من منصة Emergent
   if (storageKey) return storageKey;
 
   const resp = await axios.post(
@@ -99,13 +69,11 @@ async function initStorage() {
   return storageKey;
 }
 
-// دالة لرفع ملف إلى التخزين الخارجي
-async function putObject(path, dataBuffer, contentType) {
-  // تعليق: هذه الدالة ترفع ملف (بايتات) إلى التخزين باستخدام storage_key
+async function putObject(storagePath, dataBuffer, contentType) {
   const key = await initStorage();
 
   const resp = await axios.put(
-    `${STORAGE_URL}/objects/${path}`,
+    `${STORAGE_URL}/objects/${storagePath}`,
     dataBuffer,
     {
       headers: {
@@ -119,15 +87,12 @@ async function putObject(path, dataBuffer, contentType) {
   return resp.data;
 }
 
-// دالة لجلب ملف من التخزين الخارجي
-async function getObject(path) {
-  // تعليق: هذه الدالة تجلب ملف من التخزين وتعيد المحتوى ونوعه
+async function getObject(storagePath) {
   const key = await initStorage();
 
-  const resp = await axios.get(`${STORAGE_URL}/objects/${path}`, {
+  const resp = await axios.get(`${STORAGE_URL}/objects/${storagePath}`, {
     headers: {
       'X-Storage-Key': key,
-      // نحدد أن الاستجابة ستكون على شكل بايتات
       responseType: 'arraybuffer',
       timeout: 60000,
     },
@@ -139,29 +104,21 @@ async function getObject(path) {
   };
 }
 
-// ===================== دوال التشفير (كلمات المرور) =====================
-
-// دالة لتشفير كلمة المرور
+// ================= دوال التشفير (كلمات المرور) =================
 function hashPassword(password) {
-  // تعليق: نستخدم bcryptjs لتشفير كلمة المرور قبل حفظها في قاعدة البيانات
   const salt = bcrypt.genSaltSync(10);
   const hashed = bcrypt.hashSync(password, salt);
   return hashed;
 }
 
-// دالة للتحقق من كلمة المرور
 function verifyPassword(plainPassword, hashedPassword) {
-  // تعليق: نتحقق من أن كلمة المرور المدخلة تطابق التشفير المخزن
   return bcrypt.compareSync(plainPassword, hashedPassword);
 }
 
-// ===================== دوال إنشاء JWT =====================
-
+// ================= دوال إنشاء JWT =================
 const JWT_ALGORITHM = 'HS256';
 
-// دالة لإنشاء access token
 function createAccessToken(userId, email) {
-  // تعليق: هذا التوكن يستخدم للوصول إلى الـ API (صلاحيته ساعة)
   const payload = {
     sub: userId,
     email: email,
@@ -170,13 +127,11 @@ function createAccessToken(userId, email) {
 
   return jwt.sign(payload, JWT_SECRET, {
     algorithm: JWT_ALGORITHM,
-    expiresIn: '1h', // ساعة
+    expiresIn: '1h',
   });
 }
 
-// دالة لإنشاء refresh token
 function createRefreshToken(userId) {
-  // تعليق: هذا التوكن يستخدم لتجديد الـ access token (صلاحيته 7 أيام)
   const payload = {
     sub: userId,
     type: 'refresh',
@@ -184,79 +139,11 @@ function createRefreshToken(userId) {
 
   return jwt.sign(payload, JWT_SECRET, {
     algorithm: JWT_ALGORITHM,
-    expiresIn: '7d', // 7 أيام
+    expiresIn: '7d',
   });
 }
 
-// ===================== Middleware لجلب المستخدم الحالي =====================
-
-// تعليق: هذه الدالة تقابل get_current_user في FastAPI
-async function getCurrentUser(req, res, next) {
-  try {
-    // نحاول قراءة التوكن من الكوكيز أولاً
-    let token = req.cookies['access_token'];
-
-    // إذا لم يوجد في الكوكيز، نحاول من الهيدر Authorization
-    if (!token) {
-      const authHeader = req.headers['authorization'] || '';
-      if (authHeader.startsWith('Bearer ')) {
-        token = authHeader.slice(7);
-      }
-    }
-
-    if (!token) {
-      return res.status(401).json({ detail: 'Not authenticated' });
-    }
-
-    // فك التوكن والتحقق منه
-    const payload = jwt.verify(token, JWT_SECRET, {
-      algorithms: [JWT_ALGORITHM],
-    });
-
-    if (payload.type !== 'access') {
-      return res.status(401).json({ detail: 'Invalid token type' });
-    }
-
-    // جلب المستخدم من قاعدة البيانات
-    const user = await db.collection('users').findOne({ _id: new ObjectId(payload.sub) });
-
-    if (!user) {
-      return res.status(401).json({ detail: 'User not found' });
-    }
-
-    // تجهيز كائن المستخدم بدون كلمة المرور
-    const safeUser = {
-      ...user,
-      id: user._id.toString(),
-    };
-    delete safeUser._id;
-    delete safeUser.password_hash;
-
-    // تخزين المستخدم في الطلب لاستخدامه في الـ routes
-    req.user = safeUser;
-
-    // الانتقال للـ route التالي
-    next();
-  } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ detail: 'Token expired' });
-    }
-    return res.status(401).json({ detail: 'Invalid token' });
-  }
-}
-
-// ===================== تشغيل السيرفر =====================
-
-const PORT = process.env.PORT || 8080;
-
-// تعليق: هنا نشغّل السيرفر، لاحقًا سنضيف الـ routes (تسجيل، دخول، شات، إلخ)
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-});
-// ===================== التحقق من البيانات (بديل Pydantic) =====================
-
-// تعليق: هذه الدوال تتحقق من صحة البيانات القادمة من الواجهة الأمامية
-
+// ================= التحقق من البيانات =================
 function validateRegister(body) {
   if (!body.name || !body.email || !body.password) {
     return 'الاسم والبريد وكلمة المرور مطلوبة';
@@ -270,11 +157,57 @@ function validateLogin(body) {
   }
   return null;
 }
-// ===================== صلاحيات الأدمن =====================
 
-// تعليق: هذه الدالة تقابل get_admin_user في FastAPI
+// ================= Middleware: getCurrentUser =================
+async function getCurrentUser(req, res, next) {
+  try {
+    let token = req.cookies['access_token'];
+
+    if (!token) {
+      const authHeader = req.headers['authorization'] || '';
+      if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.slice(7);
+      }
+    }
+
+    if (!token) {
+      return res.status(401).json({ detail: 'Not authenticated' });
+    }
+
+    const payload = jwt.verify(token, JWT_SECRET, {
+      algorithms: [JWT_ALGORITHM],
+    });
+
+    if (payload.type !== 'access') {
+      return res.status(401).json({ detail: 'Invalid token type' });
+    }
+
+    const user = await db.collection('users').findOne({ _id: new ObjectId(payload.sub) });
+
+    if (!user) {
+      return res.status(401).json({ detail: 'User not found' });
+    }
+
+    const safeUser = {
+      ...user,
+      id: user._id.toString(),
+    };
+    delete safeUser._id;
+    delete safeUser.password_hash;
+
+    req.user = safeUser;
+    next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ detail: 'Token expired' });
+    }
+    return res.status(401).json({ detail: 'Invalid token' });
+  }
+}
+
+// ================= صلاحيات الأدمن =================
 async function getAdminUser(req, res, next) {
-  const user = req.user; // تم وضعه مسبقًا في getCurrentUser
+  const user = req.user;
 
   if (!user || user.role !== 'admin') {
     return res.status(403).json({ detail: 'Admin access required' });
@@ -282,27 +215,23 @@ async function getAdminUser(req, res, next) {
 
   next();
 }
-// ===================== Auth: Register =====================
 
+// ================= Auth Routes =================
 app.post('/api/auth/register', async (req, res) => {
   try {
-    // التحقق من البيانات
     const error = validateRegister(req.body);
     if (error) return res.status(400).json({ detail: error });
 
     const { name, email, password } = req.body;
     const emailLower = email.toLowerCase();
 
-    // التحقق من وجود المستخدم مسبقًا
     const existing = await db.collection('users').findOne({ email: emailLower });
     if (existing) {
       return res.status(400).json({ detail: 'Email already registered' });
     }
 
-    // تشفير كلمة المرور
     const passwordHash = hashPassword(password);
 
-    // إنشاء المستخدم
     const userDoc = {
       name,
       email: emailLower,
@@ -317,16 +246,14 @@ app.post('/api/auth/register', async (req, res) => {
     const result = await db.collection('users').insertOne(userDoc);
     const userId = result.insertedId.toString();
 
-    // إنشاء التوكنات
     const accessToken = createAccessToken(userId, emailLower);
     const refreshToken = createRefreshToken(userId);
 
-    // وضع الكوكيز
     res.cookie('access_token', accessToken, {
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
-      maxAge: 900000, // 15 دقيقة
+      maxAge: 900000,
       path: '/',
     });
 
@@ -334,7 +261,7 @@ app.post('/api/auth/register', async (req, res) => {
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
-      maxAge: 604800000, // 7 أيام
+      maxAge: 604800000,
       path: '/',
     });
 
@@ -346,13 +273,11 @@ app.post('/api/auth/register', async (req, res) => {
       online: true,
       role: 'user',
     });
-
   } catch (err) {
     console.error('Register error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Auth: Login =====================
 
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -376,13 +301,11 @@ app.post('/api/auth/login', async (req, res) => {
     const accessToken = createAccessToken(userId, emailLower);
     const refreshToken = createRefreshToken(userId);
 
-    // تحديث حالة المستخدم
     await db.collection('users').updateOne(
       { _id: user._id },
       { $set: { online: true, last_seen: new Date() } }
     );
 
-    // وضع الكوكيز
     res.cookie('access_token', accessToken, {
       httpOnly: true,
       secure: false,
@@ -407,18 +330,15 @@ app.post('/api/auth/login', async (req, res) => {
       online: true,
       role: user.role || 'user',
     });
-
   } catch (err) {
     console.error('Login error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Auth: Me =====================
 
 app.get('/api/auth/me', getCurrentUser, (req, res) => {
   return res.json(req.user);
 });
-// ===================== Auth: Logout =====================
 
 app.post('/api/auth/logout', getCurrentUser, async (req, res) => {
   try {
@@ -431,13 +351,11 @@ app.post('/api/auth/logout', getCurrentUser, async (req, res) => {
     res.clearCookie('refresh_token', { path: '/' });
 
     return res.json({ message: 'Logged out successfully' });
-
   } catch (err) {
     console.error('Logout error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Auth: Refresh Token =====================
 
 app.post('/api/auth/refresh', async (req, res) => {
   try {
@@ -476,7 +394,6 @@ app.post('/api/auth/refresh', async (req, res) => {
       online: true,
       role: user.role || 'user',
     });
-
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
       return res.status(401).json({ detail: 'Refresh token expired' });
@@ -484,8 +401,8 @@ app.post('/api/auth/refresh', async (req, res) => {
     return res.status(401).json({ detail: 'Invalid refresh token' });
   }
 });
-// ===================== Users: Get Users =====================
 
+// ================= Users =================
 app.get('/api/users', getCurrentUser, async (req, res) => {
   try {
     const currentUserId = req.user.id;
@@ -515,63 +432,19 @@ app.get('/api/users', getCurrentUser, async (req, res) => {
     }));
 
     return res.json(formatted);
-
   } catch (err) {
     console.error('Get users error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Users: Get Users =====================
 
-app.get('/api/users', getCurrentUser, async (req, res) => {
-  try {
-    const currentUserId = req.user.id;
-
-    const users = await db.collection('users')
-      .find(
-        { _id: { $ne: new ObjectId(currentUserId) } },
-        {
-          projection: {
-            name: 1,
-            email: 1,
-            avatar: 1,
-            online: 1,
-            last_seen: 1,
-          },
-        }
-      )
-      .toArray();
-
-    const formatted = users.map((u) => ({
-      id: u._id.toString(),
-      name: u.name,
-      email: u.email,
-      avatar: u.avatar,
-      online: u.online || false,
-      last_seen: u.last_seen,
-    }));
-
-    return res.json(formatted);
-
-  } catch (err) {
-    console.error('Get users error:', err);
-    return res.status(500).json({ detail: 'Server error' });
-  }
-});
-// ===================== إعداد رفع الملفات =====================
-
-// تعليق: نستخدم multer لاستقبال الملفات من الواجهة الأمامية
-const multer = require('multer');
-const upload = multer();
-
-// امتدادات الصور والفيديو
+// ================= إعداد رفع الملفات =================
 const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 const videoExts = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'mpeg', 'mpg', '3gp'];
-// ===================== File Upload =====================
 
+// ================= File Upload =================
 app.post('/api/upload', getCurrentUser, upload.single('file'), async (req, res) => {
   try {
-    // تعليق: multer يضع الملف داخل req.file
     const file = req.file;
 
     if (!file) {
@@ -581,29 +454,23 @@ app.post('/api/upload', getCurrentUser, upload.single('file'), async (req, res) 
     const originalName = file.originalname;
     const ext = originalName.includes('.') ? originalName.split('.').pop().toLowerCase() : 'bin';
 
-    const fileId = require('crypto').randomUUID();
+    const fileId = crypto.randomUUID();
     const fileName = `${fileId}.${ext}`;
     const storagePath = `uploads/${req.user.id}/${fileName}`;
 
-    // تحديد نوع الملف
     let category = 'file';
     if (imageExts.includes(ext)) category = 'image';
     else if (videoExts.includes(ext)) category = 'video';
 
-    // إنشاء مجلد المستخدم إذا لم يكن موجودًا
-    const fs = require('fs');
-    const path = require('path');
     const userFolder = path.join(__dirname, 'uploads', req.user.id);
 
     if (!fs.existsSync(userFolder)) {
       fs.mkdirSync(userFolder, { recursive: true });
     }
 
-    // حفظ الملف فعليًا
-    const filePath = path.join(userFolder, fileName);
-    fs.writeFileSync(filePath, file.buffer);
+    const fullPath = path.join(userFolder, fileName);
+    fs.writeFileSync(fullPath, file.buffer);
 
-    // حفظ metadata في قاعدة البيانات
     const fileDoc = {
       file_id: fileId,
       storage_path: storagePath,
@@ -626,20 +493,19 @@ app.post('/api/upload', getCurrentUser, upload.single('file'), async (req, res) 
       category,
       size: file.size,
     });
-
   } catch (err) {
     console.error('Upload error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== File Download =====================
 
+// ================= File Download =================
 app.get('/api/files/:path(*)', getCurrentUser, async (req, res) => {
   try {
-    const filePath = req.params.path;
+    const filePathParam = req.params.path;
 
     const record = await db.collection('files').findOne({
-      storage_path: filePath,
+      storage_path: filePathParam,
       is_deleted: false,
     });
 
@@ -647,9 +513,7 @@ app.get('/api/files/:path(*)', getCurrentUser, async (req, res) => {
       return res.status(404).json({ detail: 'File not found' });
     }
 
-    const fs = require('fs');
-    const path = require('path');
-    const fullPath = path.join(__dirname, filePath);
+    const fullPath = path.join(__dirname, filePathParam);
 
     if (!fs.existsSync(fullPath)) {
       return res.status(404).json({ detail: 'File not found' });
@@ -658,14 +522,13 @@ app.get('/api/files/:path(*)', getCurrentUser, async (req, res) => {
     res.setHeader('Content-Type', record.content_type);
     const fileStream = fs.createReadStream(fullPath);
     fileStream.pipe(res);
-
   } catch (err) {
     console.error('Download error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Send Message =====================
 
+// ================= Send Message =================
 app.post('/api/messages', getCurrentUser, async (req, res) => {
   try {
     const data = req.body;
@@ -704,14 +567,13 @@ app.post('/api/messages', getCurrentUser, async (req, res) => {
       deleted: false,
       reactions: {},
     });
-
   } catch (err) {
     console.error('Send message error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Get Messages =====================
 
+// ================= Get Messages =================
 app.get('/api/messages/:otherUserId', getCurrentUser, async (req, res) => {
   try {
     const otherUserId = req.params.otherUserId;
@@ -740,7 +602,6 @@ app.get('/api/messages/:otherUserId', getCurrentUser, async (req, res) => {
 
     const messages = await cursor.toArray();
 
-    // تحديث حالة الرسائل الواردة
     await db.collection('messages').updateMany(
       {
         sender_id: otherUserOid,
@@ -789,14 +650,13 @@ app.get('/api/messages/:otherUserId', getCurrentUser, async (req, res) => {
     });
 
     return res.json(result);
-
   } catch (err) {
     console.error('Get messages error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Edit Message =====================
 
+// ================= Edit Message =================
 app.put('/api/messages/:messageId', getCurrentUser, async (req, res) => {
   try {
     const messageId = req.params.messageId;
@@ -816,14 +676,13 @@ app.put('/api/messages/:messageId', getCurrentUser, async (req, res) => {
     );
 
     return res.json({ message: 'Message edited', id: messageId, text: data.text, edited: true });
-
   } catch (err) {
     console.error('Edit message error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Delete Message =====================
 
+// ================= Delete Message =================
 app.delete('/api/messages/:messageId', getCurrentUser, async (req, res) => {
   try {
     const messageId = req.params.messageId;
@@ -849,14 +708,13 @@ app.delete('/api/messages/:messageId', getCurrentUser, async (req, res) => {
     );
 
     return res.json({ message: 'Message deleted', id: messageId });
-
   } catch (err) {
     console.error('Delete message error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== React to Message =====================
 
+// ================= React to Message =================
 app.post('/api/messages/:messageId/react', getCurrentUser, async (req, res) => {
   try {
     const messageId = req.params.messageId;
@@ -882,14 +740,13 @@ app.post('/api/messages/:messageId/react', getCurrentUser, async (req, res) => {
     );
 
     return res.json({ message: 'Reaction updated', id: messageId, reactions });
-
   } catch (err) {
     console.error('Reaction error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Clear Conversation =====================
 
+// ================= Clear Conversation =================
 app.delete('/api/messages/conversation/:otherUserId', getCurrentUser, async (req, res) => {
   try {
     const otherUserId = req.params.otherUserId;
@@ -905,15 +762,13 @@ app.delete('/api/messages/conversation/:otherUserId', getCurrentUser, async (req
     });
 
     return res.json({ message: 'Conversation cleared', deleted_count: result.deletedCount });
-
   } catch (err) {
     console.error('Clear conversation error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Nicknames =====================
 
-// تعيين لقب لمستخدم معيّن
+// ================= Nicknames =================
 app.put('/api/nicknames/:otherUserId', getCurrentUser, async (req, res) => {
   try {
     const otherUserId = req.params.otherUserId;
@@ -938,7 +793,6 @@ app.put('/api/nicknames/:otherUserId', getCurrentUser, async (req, res) => {
   }
 });
 
-// حذف لقب
 app.delete('/api/nicknames/:otherUserId', getCurrentUser, async (req, res) => {
   try {
     const otherUserId = req.params.otherUserId;
@@ -955,7 +809,6 @@ app.delete('/api/nicknames/:otherUserId', getCurrentUser, async (req, res) => {
   }
 });
 
-// جلب كل الألقاب للمستخدم الحالي
 app.get('/api/nicknames', getCurrentUser, async (req, res) => {
   try {
     const cursor = db.collection('nicknames').find(
@@ -976,8 +829,8 @@ app.get('/api/nicknames', getCurrentUser, async (req, res) => {
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Delete for me / for all =====================
 
+// ================= Delete for me / for all =================
 app.post('/api/messages/:messageId/delete', getCurrentUser, async (req, res) => {
   try {
     const messageId = req.params.messageId;
@@ -987,7 +840,6 @@ app.post('/api/messages/:messageId/delete', getCurrentUser, async (req, res) => 
     if (!msg) return res.status(404).json({ detail: 'Message not found' });
 
     if (mode === 'for_me') {
-      // إخفاء الرسالة عن المستخدم الحالي فقط
       const hiddenFor = msg.hidden_for || [];
       if (!hiddenFor.includes(req.user.id)) hiddenFor.push(req.user.id);
 
@@ -998,7 +850,6 @@ app.post('/api/messages/:messageId/delete', getCurrentUser, async (req, res) => 
 
       return res.json({ message: 'Message hidden for you', id: messageId });
     } else if (mode === 'for_all') {
-      // حذف للجميع (فقط المرسل)
       if (msg.sender_id.toString() !== req.user.id) {
         return res.status(403).json({
           detail: 'Can only delete your own messages for everyone',
@@ -1028,8 +879,8 @@ app.post('/api/messages/:messageId/delete', getCurrentUser, async (req, res) => 
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Export Chat HTML =====================
 
+// ================= Export Chat HTML =================
 app.get('/api/messages/:otherUserId/export', getCurrentUser, async (req, res) => {
   try {
     const otherUserId = req.params.otherUserId;
@@ -1110,19 +961,17 @@ h1 { text-align: center; color: #0f172a; border-bottom: 2px solid #10b981; paddi
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename=chat_export.html');
     return res.send(html);
-
   } catch (err) {
     console.error('Export chat error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Conversation Routes =====================
 
+// ================= Conversation Routes =================
 app.get('/api/conversations', getCurrentUser, async (req, res) => {
   try {
     const currentUserOid = new ObjectId(req.user.id);
 
-    // تحديث حالة الرسائل إلى delivered
     await db.collection('messages').updateMany(
       { receiver_id: currentUserOid, status: 'sent' },
       { $set: { status: 'delivered' } }
@@ -1245,15 +1094,13 @@ app.get('/api/conversations', getCurrentUser, async (req, res) => {
     });
 
     return res.json(result);
-
   } catch (err) {
     console.error('Get conversations error:', err);
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Typing Indicator =====================
 
-// تحديث حالة الكتابة
+// ================= Typing Indicator =================
 app.post('/api/typing', getCurrentUser, async (req, res) => {
   try {
     const { receiver_id, is_typing } = req.body;
@@ -1278,7 +1125,6 @@ app.post('/api/typing', getCurrentUser, async (req, res) => {
   }
 });
 
-// جلب حالة الكتابة للطرف الآخر
 app.get('/api/typing/:otherUserId', getCurrentUser, async (req, res) => {
   try {
     const otherUserId = req.params.otherUserId;
@@ -1301,8 +1147,8 @@ app.get('/api/typing/:otherUserId', getCurrentUser, async (req, res) => {
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-// ===================== Admin: Get Users =====================
 
+// ================= Admin: Get Users =================
 app.get('/api/admin/users', getCurrentUser, getAdminUser, async (req, res) => {
   try {
     const users = await db.collection('users')
@@ -1381,8 +1227,7 @@ app.get('/api/admin/users', getCurrentUser, getAdminUser, async (req, res) => {
   }
 });
 
-// ===================== Admin: Delete User =====================
-
+// ================= Admin: Delete User =================
 app.delete('/api/admin/users/:userId', getCurrentUser, getAdminUser, async (req, res) => {
   try {
     const userId = req.params.userId;
@@ -1417,8 +1262,7 @@ app.delete('/api/admin/users/:userId', getCurrentUser, getAdminUser, async (req,
   }
 });
 
-// ===================== Admin: Stats =====================
-
+// ================= Admin: Stats =================
 app.get('/api/admin/stats', getCurrentUser, getAdminUser, async (req, res) => {
   try {
     const totalUsers = await db.collection('users').countDocuments({});
@@ -1437,8 +1281,8 @@ app.get('/api/admin/stats', getCurrentUser, getAdminUser, async (req, res) => {
     return res.status(500).json({ detail: 'Server error' });
   }
 });
-  // ===================== إنشاء الفهارس (Indexes) =====================
-  // ===================== إنشاء الفهارس (Indexes) =====================
+
+// ================= إنشاء الفهارس (Indexes) + إنشاء الأدمن =================
 async function initIndexes() {
   await db.collection('users').createIndex({ email: 1 }, { unique: true });
   await db.collection('messages').createIndex(
@@ -1458,10 +1302,7 @@ async function initIndexes() {
   await db.collection('files').createIndex({ storage_path: 1 });
 }
 
-initIndexes();
-
-
-  // ===================== إنشاء مستخدم الأدمن إن لم يكن موجودًا =====================
+async function initAdminUser() {
   const adminEmail = ADMIN_EMAIL;
   const adminPassword = ADMIN_PASSWORD;
 
@@ -1479,14 +1320,33 @@ initIndexes();
       created_at: new Date(),
     });
     console.log(`✅ Admin user created: ${adminEmail}`);
+  } else {
+    console.log('✅ Admin user already exists');
   }
-app.use(
-  cors({
-    origin: [
-      'https://app-three-inky-35.vercel.app',
-      'http://localhost:3000',
-      process.env.FRONTEND_URL || 'http://localhost:3000',
-    ],
-    credentials: true,
-  })
-);
+}
+
+async function initDatabase() {
+  await initIndexes();
+  await initAdminUser();
+}
+
+// ================= اتصال MongoDB وتشغيل السيرفر =================
+async function connectToDatabase() {
+  const client = new MongoClient(MONGO_URL);
+  await client.connect();
+  db = client.db(DB_NAME);
+  console.log('✅ Connected to MongoDB:', DB_NAME);
+
+  await initDatabase();
+}
+
+connectToDatabase().catch((err) => {
+  console.error('❌ Error connecting to MongoDB:', err);
+  process.exit(1);
+});
+
+const PORT = process.env.PORT || 8080;
+
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
