@@ -2,8 +2,7 @@
   "name": "chatapp-backend",
   "version": "1.0.0",
   "main": "server.js",
-"type": "commonjs"
-
+  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
