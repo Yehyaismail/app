@@ -1438,6 +1438,8 @@ app.get('/api/admin/stats', getCurrentUser, getAdminUser, async (req, res) => {
   }
 });
   // ===================== إنشاء الفهارس (Indexes) =====================
+  // ===================== إنشاء الفهارس (Indexes) =====================
+async function initIndexes() {
   await db.collection('users').createIndex({ email: 1 }, { unique: true });
   await db.collection('messages').createIndex(
     { sender_id: 1, receiver_id: 1, timestamp: -1 }
@@ -1454,6 +1456,10 @@ app.get('/api/admin/stats', getCurrentUser, getAdminUser, async (req, res) => {
     { unique: true }
   );
   await db.collection('files').createIndex({ storage_path: 1 });
+}
+
+initIndexes();
+
 
   // ===================== إنشاء مستخدم الأدمن إن لم يكن موجودًا =====================
   const adminEmail = ADMIN_EMAIL;
