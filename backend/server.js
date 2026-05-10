@@ -5,17 +5,19 @@
 // server.js
 
 // ==================== تحميل المتغيرات من ملف .env ====================
-import dotenv from 'dotenv';
-dotenv.config();
+// server.js
 
-// ==================== استيراد المكتبات الأساسية ====================
-import express from 'express';
-import cors from 'cors';
-import cookieParser from 'cookie-parser';
-import { MongoClient, ObjectId } from 'mongodb';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import axios from 'axios';
+// ================= تحميل المتغيرات من ملف .env =================
+require('dotenv').config();
+
+// ================= استيراد المكتبات الأساسية =================
+const express = require('express');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const { MongoClient, ObjectId } = require('mongodb');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const axios = require('axios');
 
 
 // ===================== إعداد تطبيق Express =====================
